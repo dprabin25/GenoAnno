@@ -49,7 +49,7 @@ APP_DESCRIPTIONS: Dict[str, str] = {
     "KEGG Pathway Interpreter": "Count repeated KEGG pathway terms and interpret dominant KEGG-derived functional pathway signals. Use annotation.tsv for your bacteria from KBASE-DRAM",
     "Protein Family Interpreter": "Summarize repeated protein-family terms into phenotype-level functional interpretations. Use annotation.tsv for your bacteria from KBASE-DRAM",
     "Functional Interpreter": "Parse product annotations, count functional categories, and generate phenotype summaries. Use annotation.tsv from Proksee/Bacta",
-    "Similar Oral Bacteria Interpreter": "Compare functional-category patterns against well-characterized oral bacteria.",
+    "Similar Oral Bacteria Interpreter": "Compare functional-category patterns against well-characterized oral bacteria. Use annotation.tsv from Proksee/Bacta"
 }
 
 
