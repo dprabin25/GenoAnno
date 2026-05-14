@@ -551,11 +551,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno Phenotype Grouping App</h1>
-        <p>
-            Upload a products.tsv file, inspect the original input, remove inactive pathways,
-            review removed and retained pathways, then generate phenotype groupings using the processed input.
-        </p>
+        <h1>Metabolic Pathway Interpreter</h1>
     </div>
     """,
     unsafe_allow_html=True,
