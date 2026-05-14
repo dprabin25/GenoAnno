@@ -364,7 +364,7 @@ def generate_output(final_prompt, ai_role):
 # Streamlit website
 # ============================================================
 st.set_page_config(
-    page_title="GenoAnno KEGG Pathway Count App",
+    page_title="KEGG Pathway Interpreter",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -585,11 +585,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno KEGG Pathway Count App</h1>
-        <p>
-            Upload a KEGG annotation table, select the KEGG pathway column, count repeated pathway terms,
-            generate a top 10 table with ties, and use the processed count table for phenotype interpretation.
-        </p>
+        <h1>KEGG Pathway Interpreter</h1>
     </div>
     """,
     unsafe_allow_html=True,
