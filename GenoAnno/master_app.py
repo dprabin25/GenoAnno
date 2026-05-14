@@ -1,5 +1,5 @@
 # ============================================================
-# GenoAnno Master Streamlit App - Clickable Tool Dashboard
+# GenoAnno Master Streamlit App - Password Protected Tool Dashboard
 # Runs six separate Streamlit apps from one professional home screen.
 #
 # How to run:
@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import inspect
 import runpy
 from contextlib import contextmanager
@@ -323,6 +324,31 @@ header[data-testid="stHeader"] {
     margin-top: 0.7rem;
 }
 
+.ga-login-box {
+    max-width: 560px;
+    margin: 4rem auto 0 auto;
+    padding: 2rem;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    box-shadow: var(--ga-shadow);
+}
+
+.ga-login-title {
+    font-size: 2rem;
+    font-weight: 950;
+    letter-spacing: -0.05em;
+    color: var(--ga-text);
+    margin-bottom: 0.4rem;
+}
+
+.ga-login-desc {
+    color: var(--ga-muted);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
 .stButton > button,
 .stDownloadButton > button {
     border-radius: 14px !important;
@@ -374,6 +400,66 @@ div[data-testid="stFileUploader"] {
         """.strip(),
         unsafe_allow_html=True,
     )
+
+
+# ============================================================
+# Password protection
+# ============================================================
+def check_password() -> bool:
+    """
+    Password gate for the public Streamlit app.
+
+    Required Streamlit Secret:
+        APP_PASSWORD = "your_private_password_here"
+    """
+
+    app_password = st.secrets.get("APP_PASSWORD", "")
+
+    if not app_password:
+        st.markdown(
+            """
+<div class="ga-login-box">
+    <div class="ga-login-title">GenoAnno is protected</div>
+    <div class="ga-login-desc">
+        APP_PASSWORD is not configured yet. Add APP_PASSWORD in Streamlit Secrets,
+        then reboot the app.
+    </div>
+</div>
+            """.strip(),
+            unsafe_allow_html=True,
+        )
+        st.error("Missing APP_PASSWORD in Streamlit Secrets.")
+        return False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.markdown(
+        """
+<div class="ga-login-box">
+    <div class="ga-login-title">Protected GenoAnno App</div>
+    <div class="ga-login-desc">
+        Enter the private app password to access the analysis tools.
+    </div>
+</div>
+        """.strip(),
+        unsafe_allow_html=True,
+    )
+
+    password = st.text_input(
+        "App password",
+        type="password",
+        key="app_password_input",
+    )
+
+    if st.button("Unlock app", key="unlock_app_button"):
+        if hmac.compare_digest(password, app_password):
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+
+    return False
 
 
 # ============================================================
@@ -478,6 +564,21 @@ def ensure_config_available() -> None:
 
 
 def config_has_key() -> bool:
+    """
+    Checks whether OpenAI credentials are available.
+
+    Priority:
+    1. Streamlit Secrets KEY
+    2. Local config.txt KEY
+    """
+
+    try:
+        secret_key = st.secrets.get("KEY", "")
+        if secret_key:
+            return True
+    except Exception:
+        pass
+
     if not CONFIG_FILE.exists():
         return False
 
@@ -487,6 +588,7 @@ def config_has_key() -> bool:
         if line.startswith("KEY="):
             value = line.split("=", 1)[1].strip()
             return bool(value and "your_openai_api_key" not in value.lower())
+
     return False
 
 
@@ -568,8 +670,10 @@ def render_tool_launcher() -> None:
     )
 
     app_items = list(APP_FILES.keys())
+
     for row_start in range(0, len(app_items), 3):
         cols = st.columns(3)
+
         for col, app_name in zip(cols, app_items[row_start: row_start + 3]):
             with col:
                 with st.container(border=True):
@@ -581,7 +685,12 @@ def render_tool_launcher() -> None:
                         """.strip(),
                         unsafe_allow_html=True,
                     )
-                    if st.button("Open this tool", key=f"open_{app_prefix(app_name)}", use_container_width=True):
+
+                    if st.button(
+                        "Open this tool",
+                        key=f"open_{app_prefix(app_name)}",
+                        use_container_width=True,
+                    ):
                         st.session_state["active_app"] = app_name
                         st.rerun()
 
@@ -599,8 +708,16 @@ def render_selected_app_header(app_name: str) -> None:
     )
 
 
+# ============================================================
+# Main app
+# ============================================================
 def main() -> None:
     inject_css()
+
+    # Password gate: nothing below this line is shown unless password is correct.
+    if not check_password():
+        st.stop()
+
     ensure_config_available()
 
     config_ready = config_has_key()
