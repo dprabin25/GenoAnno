@@ -597,12 +597,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno Protein Family Count App</h1>
-        <p>
-            Upload a protein family annotation table, select the protein function family column,
-            count repeated protein family terms, generate a top 10 table with ties,
-            and use the processed count table for phenotype interpretation.
-        </p>
+        <h1>Protein Family Interpreter</h1>
     </div>
     """,
     unsafe_allow_html=True,
