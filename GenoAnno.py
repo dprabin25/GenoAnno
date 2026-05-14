@@ -715,9 +715,8 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
         </div>
         <h1>GenoAnno <span>Master Suite</span></h1>
         <p>
-            A professional workspace for translating bacterial genome annotations into pathway signals,
-            phenotype groups, functional-category summaries, and oral-bacteria similarity insights.
-            Select a tool below to open it directly on this page.
+       Transform bacterial genome annotations into interpretable AI-driven biological insights.
+Use the tools below to analyze pathways, classify phenotypes, summarize functional categories, and compare oral-bacteria similarity.
         </p>
     </div>
 </div>
