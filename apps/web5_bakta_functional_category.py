@@ -603,11 +603,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno Bakta Functional Category App</h1>
-        <p>
-            Upload a Bakta TSV file, select the Product column, count repeated functional categories,
-            generate a top 10 table with ties, and use the processed count table for phenotype interpretation.
-        </p>
+        <h1>Functional Interpreter</h1>
     </div>
     """,
     unsafe_allow_html=True,
