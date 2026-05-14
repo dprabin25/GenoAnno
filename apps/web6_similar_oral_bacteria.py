@@ -626,11 +626,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno Similar Oral Bacteria App</h1>
-        <p>
-            Upload a Bakta TSV file, count repeated Product annotations, then identify well-characterized oral bacteria
-            with similar functional-category composition and phenotype-level similarity.
-        </p>
+        <h1>Similar Oral Bacteria Interpreter</h1>
     </div>
     """,
     unsafe_allow_html=True,
