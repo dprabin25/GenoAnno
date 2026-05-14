@@ -17,7 +17,7 @@ GenoAnno is a Streamlit web application for interpreting bacterial genome annota
    Counts protein-family terms and interprets their phenotype-level relevance.
 
 5. Functional Interpreter  
-   Processes Bakta product annotations, counts repeated functional categories, and generates biological summaries.
+   Processes product annotations, counts repeated functional categories, and generates biological summaries.
 
 6. Similar Oral Bacteria Interpreter  
    Compares functional-category patterns with well-characterized oral bacteria.
@@ -31,13 +31,9 @@ GenoAnno.py
 README.txt
 requirements.txt
 
-## Streamlit Cloud Deployment
+## Web-version
 
-When deploying on Streamlit Community Cloud, set the main file path as:
-
-GenoAnno.py
-
-## How to Use the Website
+Users can directly use the website version. 
 
 1. Open the GenoAnno website.
 2. Enter your OpenAI API key in the API settings section.
@@ -54,11 +50,13 @@ GenoAnno.py
 
 Each user enters their own OpenAI API key before running an analysis.
 
-The key is stored only in the current Streamlit browser session using st.session_state. It is not written to project files, saved permanently, or shared across sessions.
+The key is stored only in the current Streamlit browser session. It is not written to project files, saved permanently, or shared across sessions.
 
 The key is removed when the browser session ends or when the user clicks "Clear API settings from this session".
 
 ## Running Locally
+
+Download the GenoAnno tool (All files) from this cuurent Githug.
 
 Open a terminal in the project folder and run:
 
