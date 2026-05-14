@@ -715,10 +715,10 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
         </div>
         <h1>GenoAnno <span>Master Suite</span></h1>
         <p>
-       From bacterial genome annotations to AI-guided biological insight.
+       From bacterial genome annotations to AI-guided biological insights.
         </p>
         <p>
-Decode pathways, phenotype signals, protein-family patterns, functional categories, and oral-bacteria similarity with intelligent annotation tools.
+Interpret pathways, phenotype signals, protein-family patterns, functional categories, and oral-bacteria similarity.
         </p>
     </div>
 </div>
