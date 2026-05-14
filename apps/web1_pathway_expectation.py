@@ -376,11 +376,7 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>GenoAnno Pathway Expectation App</h1>
-        <p>
-            A structured workspace for evaluating microbial pathway relevance to a bacterial phenotype.
-            Edit each section independently, generate a phenotype-linked interpretation, and save the result as a local text file.
-        </p>
+        <h1>Making Expectation</h1>
     </div>
     """,
     unsafe_allow_html=True,
