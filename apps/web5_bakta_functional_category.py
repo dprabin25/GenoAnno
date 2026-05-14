@@ -430,7 +430,7 @@ def generate_output(final_prompt, ai_role):
 # Streamlit website
 # ============================================================
 st.set_page_config(
-    page_title="GenoAnno Bakta Functional Category App",
+    page_title="Functional Interpreter",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -636,7 +636,7 @@ ai_role = st.text_area(
 # ============================================================
 st.markdown('<div class="section-title">2. Input</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Upload Bakta TSV and select the annotation column to count.</div>',
+    '<div class="section-note"> </div>',
     unsafe_allow_html=True,
 )
 
