@@ -715,8 +715,10 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
         </div>
         <h1>GenoAnno <span>Master Suite</span></h1>
         <p>
-       Transform bacterial genome annotations into interpretable AI-driven biological insights.
-Use the tools below to analyze pathways, classify phenotypes, summarize functional categories, and compare oral-bacteria similarity.
+       From bacterial genome annotations to AI-guided biological insight.
+        </p>
+        <p>
+Decode pathways, phenotype signals, protein-family patterns, functional categories, and oral-bacteria similarity with intelligent annotation tools.
         </p>
     </div>
 </div>
