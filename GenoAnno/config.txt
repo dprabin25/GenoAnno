@@ -1,8 +1,0 @@
-# GenoAnno Master App configuration
-# For local use, you may paste your key here.
-# For Streamlit Cloud, keep KEY blank and add KEY in App settings > Secrets.
-
-KEY=
-DEFAULT_MODEL=gpt-4o-mini
-TEMPERATURE=0.5
-MAX_TOKENS=2000
