@@ -459,13 +459,7 @@ final_prompt = build_prompt(
     reporting=reporting.strip(),
 )
 
-with st.expander("Preview final prompt sent to model", expanded=False):
-    st.text_area(
-        "Final prompt",
-        value=final_prompt,
-        height=420,
-        label_visibility="collapsed",
-    )
+
 
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
