@@ -165,7 +165,7 @@ DEFAULT_ANALYSIS = """Using the processed Bakta functional category count table,
 DEFAULT_REPORTING = """Generate an output table with the following three columns:
 
 1. Phenotype
-2. Associated functional categories for phenotypic characteristics. 
+2. Associated functional categories supporting phenotypes
 3. Explanation describing how the listed functional categories support or define the phenotype
 
 Formatting rules:
