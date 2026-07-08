@@ -51,11 +51,26 @@ Filtering rule already applied: pathways with 0, FALSE, empty, missing, NA, or N
 
 Only these four processed tables (not the raw annotation files) should be used for phenotype grouping and comparison.
 
-Question: Are there other oral bacteria that have similar gene composition to my bacteria? List name of well characterized bacteria with the most consistent shared functional categories. Describe the phenotype of these bacteria. Provide only a table with columns containing a list of closely related bacteria with their shared functions and phenotypes and a summary. 
+STEP 1 - Before naming any candidate bacteria, first derive an internal phenotype profile of this genome from the four tables. Explicitly reason about:
+- Respiratory/fermentative capacity: which respiratory chain complexes (Table 1/Table 4) are present or absent, and whether the profile looks aerobic, microaerophilic, anaerobic, or strictly fermentative.
+- Carbon source usage: which CAZy/carbohydrate-active categories (Table 1) are present vs. largely absent - i.e., whether this organism looks broadly saccharolytic (degrades many sugars) or asaccharolytic/limited (relies on other substrates such as amino acids, lactate, or organic acids).
+- Fermentation end products: which SCFA/alcohol conversion pathways (Table 4) are complete (e.g., lactate, propionate, acetate, butyrate). End-product profile is one of the strongest, most specific phenotype signals for oral bacteria and often more diagnostic than raw gene overlap.
+- Distinctive protein families (Table 3) and KEGG pathways (Table 2) beyond universal housekeeping genes.
 
+STEP 2 - When weighing evidence across all four tables, explicitly downweight categories that are near-universal across nearly all bacteria and carry little taxonomic signal (e.g., "hypothetical protein", generic ABC transporters, ribosomal proteins, DNA replication/repair machinery, chaperones, generic transport systems). These will dominate the raw gene counts but should NOT drive the match. Instead prioritize categories that vary meaningfully between oral genera: CAZy/carbohydrate degradation breadth, SCFA/fermentation end products, respiratory chain complex composition, nitrogen/sulfur metabolism, and any pathway present in some oral taxa but absent in most others.
 
-Output: Rank the species and provide the reasoning for each rank. Sort it based on the confidence, with higher confidence listed on the top.  Follow the table with a short summary paragraph.
+STEP 3 - Only after deriving this phenotype profile, identify well-characterized oral bacteria whose published phenotype (fermentation strategy, carbon source range, oxygen tolerance, cell/colony morphology) is genuinely consistent with the derived profile - not simply bacteria that happen to share the largest raw count of generic annotated genes. If a well-known genus overlaps only on universal housekeeping categories, exclude it even if its raw overlap count is high. Do not default to the most commonly cited oral bacteria (e.g., Streptococcus, Actinomyces) unless the derived phenotype profile actually supports them - less commonly discussed genera should be named if they fit better.
 
+Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), weighted as described above, not just raw agreement in one table.
+
+Output, in this order:
+1. A short (2-4 sentence) summary of the phenotype profile you derived in Step 1, so the reasoning can be sanity-checked.
+2. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | Confidence.
+3. A short summary paragraph.
+
+List well-characterized bacteria with the most consistent shared, discriminating (not universal) functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
+
+Rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
 """
 
 # ---------------------------------------------------------------------------
