@@ -65,7 +65,7 @@ Question: Are there other oral bacteria that have similar gene composition to mi
 
 Output, in this order:
 1. A short (2-4 sentence) summary of the phenotype profile you derived in Step 1, so the reasoning can be sanity-checked.
-2. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | Confidence.
+2. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | 
 3. A short summary paragraph.
 
 List well-characterized bacteria with the most consistent shared, discriminating (not universal) functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
