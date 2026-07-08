@@ -29,17 +29,17 @@ import streamlit as st
 DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome (an oral bacterium) using multiple annotation pipelines and summarized the results into four processed tables describing its functional gene composition.
 
 Table 1 - Functional category gene counts (Bakta):
-I selected the Product column from the Bakta annotation and counted how many genes map to each repeated product/function term.
+I selected the Product column from the Bakta annotation and counted how many genes map to each repeated product/function term. Ultra-generic, non-informative labels ("hypothetical protein", "uncharacterized protein") have been removed, and the table has been capped to the top most frequent categories - it is a partial, curated list, not the full gene set.
 Column 1: Functional category
 Column 2: Gene count
 
-Table 2 - KEGG pathway gene counts (KBASE):
-I assigned each gene to its corresponding KEGG pathway and counted the number of genes mapped to each pathway.
-Column 1: KEGG pathway
+Table 2 - KEGG-annotated gene function descriptions (KBASE):
+Each row is the free-text function description ("kegg_hit") tied to a gene's best KO match, counted by how many genes share that exact description. These are gene-level descriptions, NOT a curated pathway hierarchy - there is no row literally named "glycolysis" or "TCA cycle" unless it appears verbatim below. Do not invent or assume pathway-level labels that are not literal rows in this table. Generic/uninformative rows have been removed and the table capped to the top most frequent entries.
+Column 1: KEGG-hit description
 Column 2: Gene count
 
 Table 3 - Protein function family gene counts (KBASE):
-I assigned each gene to its corresponding protein function family and counted the number of genes mapped to each family.
+I assigned each gene to its corresponding protein function family (peptidase family) and counted the number of genes mapped to each family.
 Column 1: Protein function family
 Column 2: Gene count
 
@@ -47,9 +47,11 @@ Table 4 - Metabolic pathway completeness (KEGG-Decoder style):
 For each metabolic pathway, I calculated its completeness and, where applicable, determined whether the pathway is present (TRUE/FALSE).
 Column 1: Metabolic pathway name
 Column 2: Pathway status (completeness score or TRUE/FALSE)
-Filtering rule already applied: pathways with 0, FALSE, empty, missing, NA, or NaN values were removed before analysis.
+Filtering rule already applied: pathways with 0, FALSE, empty, missing, NA, or NaN values were removed before analysis - so Table 4 below ONLY lists pathways that are actually present/complete. A separate list of pathway GROUPS that are entirely absent (zero present rows in that group) is also provided below Table 4 - treat total absence of a group as meaningful negative evidence about this organism's capabilities, not as missing data. For example, if every "CAZy:" row is absent, this genome shows no detectable capacity to degrade the corresponding dietary polysaccharides, which is a strong asaccharolytic signal - do not describe such an organism as "broadly saccharolytic."
 
 Only these four processed tables (not the raw annotation files) should be used for phenotype grouping and comparison.
+
+GROUNDING RULE (important): Every category, pathway, or family you cite as "shared" or as evidence must be a value that appears verbatim as a row in Tables 1-4 below. Do not cite a category unless you can point to its literal row. Do not describe capabilities (e.g., "broadly saccharolytic," "diverse CAZy families") unless multiple distinct, clearly-named carbohydrate-degradation rows are actually present in Table 4 - a handful of generic "glycosyltransferase" or "glycosyl transferase" entries in Tables 1/3 usually reflect structural cell-envelope biosynthesis (peptidoglycan, lipopolysaccharide, lipid A), not dietary carbohydrate degradation, unless the label explicitly names an extracellular substrate (e.g., cellulase, amylase, xylanase, chitinase, pectinase).
 
 STEP 1 - Before naming any candidate bacteria, first derive an internal phenotype profile of this genome from the four tables. Explicitly reason about:
 - Respiratory/fermentative capacity: which respiratory chain complexes (Table 1/Table 4) are present or absent, and whether the profile looks aerobic, microaerophilic, anaerobic, or strictly fermentative.
@@ -59,25 +61,56 @@ STEP 1 - Before naming any candidate bacteria, first derive an internal phenotyp
 
 STEP 2 - When weighing evidence across all four tables, explicitly downweight categories that are near-universal across nearly all bacteria and carry little taxonomic signal (e.g., "hypothetical protein", generic ABC transporters, ribosomal proteins, DNA replication/repair machinery, chaperones, generic transport systems). These will dominate the raw gene counts but should NOT drive the match. Instead prioritize categories that vary meaningfully between oral genera: CAZy/carbohydrate degradation breadth, SCFA/fermentation end products, respiratory chain complex composition, nitrogen/sulfur metabolism, and any pathway present in some oral taxa but absent in most others.
 
-STEP 3 - Only after deriving this phenotype profile, identify well-characterized oral bacteria whose published phenotype (fermentation strategy, carbon source range, oxygen tolerance, cell/colony morphology) is genuinely consistent with the derived profile - not simply bacteria that happen to share the largest raw count of generic annotated genes. If a well-known genus overlaps only on universal housekeeping categories, exclude it even if its raw overlap count is high.
+STEP 3 - Only after deriving this phenotype profile, identify well-characterized oral bacteria whose published phenotype (fermentation strategy, carbon source range, oxygen tolerance, cell/colony morphology) is genuinely consistent with the derived profile - not simply bacteria that happen to share the largest raw count of generic annotated genes. If a well-known genus overlaps only on universal housekeeping categories, exclude it even if its raw overlap count is high. Do not default to the most commonly cited oral bacteria (e.g., Streptococcus, Actinomyces) unless the derived phenotype profile actually supports them - less commonly discussed genera should be named if they fit better.
 
-Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), weighted as described above, in one table.
+Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), weighted as described above, not just raw agreement in one table.
 
 Output, in this order:
 1. A short (2-4 sentence) summary of the phenotype profile you derived in Step 1, so the reasoning can be sanity-checked.
-2. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | 
+2. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | Confidence.
 3. A short summary paragraph.
 
 List well-characterized bacteria with the most consistent shared, discriminating (not universal) functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
 
-Match the qualities with suspect species as a veteran Prof and rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
+Rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
 """
 
 # ---------------------------------------------------------------------------
 # Parsers: raw file -> processed table
 # ---------------------------------------------------------------------------
 
-def parse_bakta_functional_categories(bakta_file) -> pd.DataFrame:
+# Labels that appear in nearly every bacterial genome and carry ~no
+# taxonomic signal. These get dropped from Tables 1 and 2 so the model's
+# attention isn't spent on rows that can't discriminate between species.
+GENERIC_LABELS = {
+    "hypothetical protein",
+    "uncharacterized protein",
+}
+
+TOP_N_ROWS = 40  # cap on how many rows go into Tables 1 and 2
+
+
+def _clean_and_cap(counts: pd.DataFrame, label_col: str, top_n: int = TOP_N_ROWS):
+    """Drop generic/uninformative labels, sort by count, keep the top N.
+
+    Returns (trimmed_df, note) where note documents what was omitted so the
+    prompt can be transparent about the fact that this is a partial table.
+    """
+    total_rows = len(counts)
+    filtered = counts[~counts[label_col].str.strip().str.lower().isin(GENERIC_LABELS)]
+    dropped_generic = total_rows - len(filtered)
+    filtered = filtered.sort_values("Gene count", ascending=False).reset_index(drop=True)
+    trimmed = filtered.head(top_n)
+    omitted = len(filtered) - len(trimmed)
+    note = (
+        f"(showing top {len(trimmed)} of {total_rows} total categories by gene count; "
+        f"{dropped_generic} generic/non-discriminating rows removed"
+        + (f"; {omitted} additional lower-count categories omitted for brevity)" if omitted > 0 else ")")
+    )
+    return trimmed, note
+
+
+def parse_bakta_functional_categories(bakta_file):
     """Proksee/Bakta annotation TSV -> Table 1 (Functional category, Gene count)."""
     raw = bakta_file.read()
     if isinstance(raw, bytes):
@@ -95,20 +128,20 @@ def parse_bakta_functional_categories(bakta_file) -> pd.DataFrame:
         .rename_axis("Functional category")
         .reset_index(name="Gene count")
     )
-    return counts
+    return _clean_and_cap(counts, "Functional category")
 
 
-def parse_kbase_kegg_pathways(kbase_file) -> pd.DataFrame:
-    """KBASE annotation TSV -> Table 2 (KEGG pathway, Gene count)."""
+def parse_kbase_kegg_pathways(kbase_file):
+    """KBASE annotation TSV -> Table 2 (KEGG-hit description, Gene count)."""
     df = pd.read_csv(kbase_file, sep="\t")
     hits = df["kegg_hit"].dropna()
     hits = hits[hits.str.strip() != ""]
     counts = (
         hits.value_counts()
-        .rename_axis("KEGG pathway")
+        .rename_axis("KEGG-hit description")
         .reset_index(name="Gene count")
     )
-    return counts
+    return _clean_and_cap(counts, "KEGG-hit description")
 
 
 def parse_kbase_protein_families(kbase_file) -> pd.DataFrame:
@@ -124,9 +157,16 @@ def parse_kbase_protein_families(kbase_file) -> pd.DataFrame:
     return counts
 
 
-def parse_products_completeness(products_file) -> pd.DataFrame:
+def parse_products_completeness(products_file):
     """Products.tsv (one row per genome, one column per pathway) -> Table 4
     (Metabolic pathway name, Pathway status), FALSE/0/empty/NA rows removed.
+
+    Also returns a list of pathway GROUPS (text before the first ":") that
+    have ZERO surviving rows - i.e. every member of that group was filtered
+    out as absent. This is the key fix for the "broadly saccharolytic"
+    misread: when every "CAZy: ..." row is absent, that's strong negative
+    evidence, not silence, and the model needs it spelled out explicitly
+    rather than inferring it from a row that simply isn't there.
     """
     df = pd.read_csv(products_file, sep="\t")
     row = df.iloc[0]
@@ -148,8 +188,19 @@ def parse_products_completeness(products_file) -> pd.DataFrame:
         except (TypeError, ValueError):
             return bool(v)
 
-    long = long[long["Pathway status"].apply(is_present)].reset_index(drop=True)
-    return long
+    def group_of(name: str) -> str:
+        return name.split(":")[0].strip() if ":" in name else name
+
+    long["Group"] = long["Metabolic pathway name"].apply(group_of)
+    present_mask = long["Pathway status"].apply(is_present)
+    kept = long[present_mask].reset_index(drop=True)
+
+    all_groups = long["Group"].unique().tolist()
+    present_groups = set(kept["Group"].unique().tolist())
+    absent_groups = [g for g in all_groups if g not in present_groups]
+
+    kept = kept.drop(columns=["Group"])
+    return kept, absent_groups
 
 
 # ---------------------------------------------------------------------------
@@ -165,17 +216,29 @@ def _to_markdown_table(df: pd.DataFrame) -> str:
 
 def build_combined_prompt(
     functional_category_df: pd.DataFrame,
+    functional_category_note: str,
     kegg_pathway_df: pd.DataFrame,
+    kegg_pathway_note: str,
     protein_family_df: pd.DataFrame,
     pathway_completeness_df: pd.DataFrame,
+    absent_pathway_groups: list,
     base_description: str,
     extra_instructions: str = "",
 ) -> str:
     prompt = base_description.strip() + "\n\n"
-    prompt += "Table 1 - Functional category gene counts:\n" + _to_markdown_table(functional_category_df) + "\n\n"
-    prompt += "Table 2 - KEGG pathway gene counts:\n" + _to_markdown_table(kegg_pathway_df) + "\n\n"
+    prompt += "Table 1 - Functional category gene counts " + functional_category_note + ":\n"
+    prompt += _to_markdown_table(functional_category_df) + "\n\n"
+    prompt += "Table 2 - KEGG-hit description gene counts " + kegg_pathway_note + ":\n"
+    prompt += _to_markdown_table(kegg_pathway_df) + "\n\n"
     prompt += "Table 3 - Protein function family gene counts:\n" + _to_markdown_table(protein_family_df) + "\n\n"
-    prompt += "Table 4 - Metabolic pathway completeness:\n" + _to_markdown_table(pathway_completeness_df) + "\n\n"
+    prompt += "Table 4 - Metabolic pathway completeness (present/complete pathways only):\n"
+    prompt += _to_markdown_table(pathway_completeness_df) + "\n\n"
+    if absent_pathway_groups:
+        prompt += (
+            "Pathway GROUPS with ZERO present/complete rows in Table 4 (entirely absent - "
+            "treat as meaningful negative evidence, not missing data):\n"
+            + ", ".join(sorted(absent_pathway_groups)) + "\n\n"
+        )
     if extra_instructions.strip():
         prompt += "Additional instructions:\n" + extra_instructions.strip() + "\n"
     return prompt
@@ -269,29 +332,36 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         st.warning("Please upload all three files first.")
     else:
         with st.spinner("Processing annotation files..."):
-            functional_category_df = parse_bakta_functional_categories(bakta_file)
+            functional_category_df, functional_category_note = parse_bakta_functional_categories(bakta_file)
             kbase_file.seek(0)
-            kegg_pathway_df = parse_kbase_kegg_pathways(kbase_file)
+            kegg_pathway_df, kegg_pathway_note = parse_kbase_kegg_pathways(kbase_file)
             kbase_file.seek(0)
             protein_family_df = parse_kbase_protein_families(kbase_file)
-            pathway_completeness_df = parse_products_completeness(products_file)
+            pathway_completeness_df, absent_pathway_groups = parse_products_completeness(products_file)
 
         with st.expander("Processed tables (review before sending to the model)"):
             st.subheader("Table 1 - Functional category gene counts")
+            st.caption(functional_category_note)
             st.dataframe(functional_category_df)
-            st.subheader("Table 2 - KEGG pathway gene counts")
+            st.subheader("Table 2 - KEGG-hit description gene counts")
+            st.caption(kegg_pathway_note)
             st.dataframe(kegg_pathway_df)
             st.subheader("Table 3 - Protein function family gene counts")
             st.dataframe(protein_family_df)
             st.subheader("Table 4 - Metabolic pathway completeness")
             st.dataframe(pathway_completeness_df)
+            if absent_pathway_groups:
+                st.caption("Entirely absent pathway groups: " + ", ".join(sorted(absent_pathway_groups)))
 
         base_description = input_description if input_description.strip() else DEFAULT_INPUT_DESCRIPTION
         prompt = build_combined_prompt(
             functional_category_df,
+            functional_category_note,
             kegg_pathway_df,
+            kegg_pathway_note,
             protein_family_df,
             pathway_completeness_df,
+            absent_pathway_groups,
             base_description,
             extra_instructions,
         )
