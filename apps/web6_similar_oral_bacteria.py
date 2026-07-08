@@ -51,13 +51,11 @@ Filtering rule already applied: pathways with 0, FALSE, empty, missing, NA, or N
 
 Only these four processed tables (not the raw annotation files) should be used for phenotype grouping and comparison.
 
-Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), not just agreement in one table.
+Question: Are there other oral bacteria that have similar gene composition to my bacteria? List name of well characterized bacteria with the most consistent shared functional categories. Describe the phenotype of these bacteria. Provide only a table with columns containing a list of closely related bacteria with their shared functions and phenotypes and a summary. 
 
-List well-characterized bacteria with the most consistent shared functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
 
-Output: Provide only a table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match) | Phenotype description | Confidence. Follow the table with a short summary paragraph.
+Output: Rank the species and provide the reasoning for each rank. Sort it based on the confidence, with higher confidence listed on the top.  Follow the table with a short summary paragraph.
 
-Rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
 """
 
 # ---------------------------------------------------------------------------
