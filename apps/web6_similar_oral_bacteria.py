@@ -1,20 +1,24 @@
-"""
-6_similar_oral_bacteria.py
-
-Streamlit tab: find oral bacteria with similar gene composition by combining
-FOUR processed summary tables derived from three raw annotation files:
-
-  Raw file                          -> Processed table(s)
-  --------------------------------------------------------------------------
-  KBASE annotations (.tsv)          -> Table 2: KEGG pathway gene counts
-                                    -> Table 3: Protein function family gene counts
-  Proksee/Bakta annotations (.tsv)  -> Table 1: Functional category gene counts
-  Products.tsv (KEGG-Decoder style) -> Table 4: Metabolic pathway completeness
-
-"""
+# ============================================================
+# web6_similar_oral_bacteria.py
+#
+# GenoAnno tab: find oral bacteria with similar gene composition by
+# combining FOUR processed summary tables derived from three raw
+# annotation files:
+#
+#   Raw file                           -> Processed table(s)
+#   -------------------------------------------------------------
+#   Proksee/Bakta annotation (.tsv)    -> Table 1: Functional category gene counts
+#   KBASE annotation (.tsv)            -> Table 2: KEGG pathway gene counts
+#                                      -> Table 3: Protein function family gene counts
+#   Products.tsv (KEGG-Decoder style)  -> Table 4: Metabolic pathway completeness
+#
+# This file is run by master_app.py via runpy.run_path(..., run_name=
+# f"__genoanno_{prefix}__"), NOT as __main__. That means any code guarded
+# by `if __name__ == "__main__":` never executes when opened from the
+# dashboard. All UI code below therefore runs at module level.
+# ============================================================
 
 import io
-import re
 import pandas as pd
 import streamlit as st
 
@@ -47,9 +51,13 @@ Filtering rule already applied: pathways with 0, FALSE, empty, missing, NA, or N
 
 Only these four processed tables (not the raw annotation files) should be used for phenotype grouping and comparison.
 
-Question: Are there other oral bacteria that have similar gene composition to my bacteria? List name of well characterized bacteria with the most consistent shared functional categories. Describe the phenotype of these bacteria. Provide only a table with columns containing a list of closely related bacteria with their shared functions and phenotypes and a summary. 
-Rank the species and provide the reasoning. Sort it based on the confidence, with higher confidence listed on the top. 
+Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), not just agreement in one table.
 
+List well-characterized bacteria with the most consistent shared functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
+
+Output: Provide only a table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match) | Phenotype description | Confidence. Follow the table with a short summary paragraph.
+
+Rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
 """
 
 # ---------------------------------------------------------------------------
@@ -57,12 +65,7 @@ Rank the species and provide the reasoning. Sort it based on the confidence, wit
 # ---------------------------------------------------------------------------
 
 def parse_bakta_functional_categories(bakta_file) -> pd.DataFrame:
-    """Proksee/Bakta annotation TSV -> Table 1 (Functional category, Gene count).
-
-    Bakta TSVs have a handful of '#'-prefixed metadata lines before the header
-    row (which itself starts with '#Sequence Id'). We skip the metadata lines
-    but keep the header.
-    """
+    """Proksee/Bakta annotation TSV -> Table 1 (Functional category, Gene count)."""
     raw = bakta_file.read()
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8", errors="replace")
@@ -83,13 +86,7 @@ def parse_bakta_functional_categories(bakta_file) -> pd.DataFrame:
 
 
 def parse_kbase_kegg_pathways(kbase_file) -> pd.DataFrame:
-    """KBASE annotation TSV -> Table 2 (KEGG pathway, Gene count).
-
-    Uses the 'kegg_hit' description tied to each gene's ko_id. Swap this for
-    a ko_id -> KEGG pathway lookup if you have one; as shipped it counts genes
-    per unique KEGG hit description, which is the closest pathway-level label
-    available directly in this file.
-    """
+    """KBASE annotation TSV -> Table 2 (KEGG pathway, Gene count)."""
     df = pd.read_csv(kbase_file, sep="\t")
     hits = df["kegg_hit"].dropna()
     hits = hits[hits.str.strip() != ""]
@@ -116,8 +113,7 @@ def parse_kbase_protein_families(kbase_file) -> pd.DataFrame:
 
 def parse_products_completeness(products_file) -> pd.DataFrame:
     """Products.tsv (one row per genome, one column per pathway) -> Table 4
-    (Metabolic pathway name, Pathway status), with the FALSE/0/empty/NA rows
-    already filtered out.
+    (Metabolic pathway name, Pathway status), FALSE/0/empty/NA rows removed.
     """
     df = pd.read_csv(products_file, sep="\t")
     row = df.iloc[0]
@@ -151,7 +147,6 @@ def _to_markdown_table(df: pd.DataFrame) -> str:
     try:
         return df.to_markdown(index=False)
     except ImportError:
-        # tabulate not installed - fall back to CSV-ish text
         return df.to_csv(index=False, sep="|")
 
 
@@ -160,66 +155,106 @@ def build_combined_prompt(
     kegg_pathway_df: pd.DataFrame,
     protein_family_df: pd.DataFrame,
     pathway_completeness_df: pd.DataFrame,
+    base_description: str,
     extra_instructions: str = "",
 ) -> str:
-    prompt = DEFAULT_INPUT_DESCRIPTION.strip() + "\n\n"
-    prompt += "Table 1 - Functional category gene counts:\n"
-    prompt += _to_markdown_table(functional_category_df) + "\n\n"
-    prompt += "Table 2 - KEGG pathway gene counts:\n"
-    prompt += _to_markdown_table(kegg_pathway_df) + "\n\n"
-    prompt += "Table 3 - Protein function family gene counts:\n"
-    prompt += _to_markdown_table(protein_family_df) + "\n\n"
-    prompt += "Table 4 - Metabolic pathway completeness:\n"
-    prompt += _to_markdown_table(pathway_completeness_df) + "\n\n"
+    prompt = base_description.strip() + "\n\n"
+    prompt += "Table 1 - Functional category gene counts:\n" + _to_markdown_table(functional_category_df) + "\n\n"
+    prompt += "Table 2 - KEGG pathway gene counts:\n" + _to_markdown_table(kegg_pathway_df) + "\n\n"
+    prompt += "Table 3 - Protein function family gene counts:\n" + _to_markdown_table(protein_family_df) + "\n\n"
+    prompt += "Table 4 - Metabolic pathway completeness:\n" + _to_markdown_table(pathway_completeness_df) + "\n\n"
     if extra_instructions.strip():
         prompt += "Additional instructions:\n" + extra_instructions.strip() + "\n"
     return prompt
 
 
 # ---------------------------------------------------------------------------
-# Streamlit page
+# OpenAI call - uses the same session-state keys master_app.py's
+# api_key_setup() already populates (user_openai_api_key, user_selected_model,
+# user_temperature, user_max_tokens). No new config screen needed.
 # ---------------------------------------------------------------------------
 
-def render():
-    st.header("Find Similar Oral Bacteria")
-    st.caption(
-        "Upload your three raw annotation files. This tab derives four "
-        "summary tables from them (functional categories, KEGG pathways, "
-        "protein families, pathway completeness) and combines all four into "
-        "one prompt to search for bacteria with a similar gene composition."
+def call_openai(prompt: str) -> str:
+    from openai import OpenAI
+
+    api_key = st.session_state.get("user_openai_api_key", "")
+    model = st.session_state.get("user_selected_model", "gpt-4o-mini")
+    temperature = st.session_state.get("user_temperature", 0.5)
+    max_tokens = st.session_state.get("user_max_tokens", 2000)
+
+    if not api_key:
+        return "No OpenAI API key found in this session. Please enter one on the dashboard screen."
+
+    client = OpenAI(api_key=api_key)
+    messages = [{"role": "user", "content": prompt}]
+
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception:
+        # Newer reasoning-style models (e.g. gpt-5 family) reject `max_tokens`
+        # and fixed `temperature` on the chat.completions endpoint - retry
+        # with the parameters they do accept.
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_completion_tokens=max_tokens,
+            )
+        except Exception as exc:  # surface the real error in the UI
+            return f"OpenAI request failed: {exc}"
+
+    return completion.choices[0].message.content
+
+
+# ---------------------------------------------------------------------------
+# UI - runs at module (import) level, since master_app.py executes this file
+# with runpy.run_path rather than as __main__.
+# ---------------------------------------------------------------------------
+
+st.header("Find Similar Oral Bacteria")
+st.caption(
+    "Upload your three raw annotation files. This tab derives four summary "
+    "tables from them (functional categories, KEGG pathways, protein "
+    "families, pathway completeness) and combines all four into one prompt "
+    "to search for bacteria with a similar gene composition."
+)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    bakta_file = st.file_uploader(
+        "Bakta/Proksee annotation (.tsv)", type=["tsv"], key="bakta_upload"
+    )
+with col2:
+    kbase_file = st.file_uploader(
+        "KBASE annotation (.tsv)", type=["tsv"], key="kbase_upload"
+    )
+with col3:
+    products_file = st.file_uploader(
+        "Pathway completeness table, e.g. Products.tsv (.tsv)",
+        type=["tsv"],
+        key="products_upload",
     )
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        bakta_file = st.file_uploader(
-            "Bakta/Proksee annotation (.tsv)", type=["tsv"], key="bakta_upload"
-        )
-    with col2:
-        kbase_file = st.file_uploader(
-            "KBASE annotation (.tsv)", type=["tsv"], key="kbase_upload"
-        )
-    with col3:
-        products_file = st.file_uploader(
-            "Pathway completeness table, e.g. Products.tsv (.tsv)",
-            type=["tsv"],
-            key="products_upload",
-        )
+input_description = st.text_area(
+    "Prompt sent to the model",
+    value=DEFAULT_INPUT_DESCRIPTION,
+    height=380,
+    key="input_description",
+)
 
-    input_description = st.text_area(
-        "Prompt sent to the model",
-        value=DEFAULT_INPUT_DESCRIPTION,
-        height=380,
-    )
+extra_instructions = st.text_area(
+    "Any additional instructions (optional)", value="", height=80, key="extra_instructions"
+)
 
-    extra_instructions = st.text_area(
-        "Any additional instructions (optional)", value="", height=80
-    )
-
-    if st.button("Find similar bacteria", type="primary"):
-        if not (bakta_file and kbase_file and products_file):
-            st.warning("Please upload all three files first.")
-            return
-
+if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"):
+    if not (bakta_file and kbase_file and products_file):
+        st.warning("Please upload all three files first.")
+    else:
         with st.spinner("Processing annotation files..."):
             functional_category_df = parse_bakta_functional_categories(bakta_file)
             kbase_file.seek(0)
@@ -238,27 +273,18 @@ def render():
             st.subheader("Table 4 - Metabolic pathway completeness")
             st.dataframe(pathway_completeness_df)
 
-        # Use the (possibly edited) text from the textbox as the description,
-        # but still append the freshly parsed tables.
         base_description = input_description if input_description.strip() else DEFAULT_INPUT_DESCRIPTION
-        prompt = base_description.strip() + "\n\n"
-        prompt += "Table 1 - Functional category gene counts:\n" + _to_markdown_table(functional_category_df) + "\n\n"
-        prompt += "Table 2 - KEGG pathway gene counts:\n" + _to_markdown_table(kegg_pathway_df) + "\n\n"
-        prompt += "Table 3 - Protein function family gene counts:\n" + _to_markdown_table(protein_family_df) + "\n\n"
-        prompt += "Table 4 - Metabolic pathway completeness:\n" + _to_markdown_table(pathway_completeness_df) + "\n\n"
-        if extra_instructions.strip():
-            prompt += "Additional instructions:\n" + extra_instructions.strip() + "\n"
+        prompt = build_combined_prompt(
+            functional_category_df,
+            kegg_pathway_df,
+            protein_family_df,
+            pathway_completeness_df,
+            base_description,
+            extra_instructions,
+        )
 
         with st.spinner("Querying the model..."):
-            # TODO: replace this with the same LLM-calling function your other
-            # tabs (1-5) already use, e.g.:
-            #   response = call_llm(prompt)
-            # Left as a placeholder so this file runs standalone.
-            response = "TODO: wire up your existing LLM call here.\n\nPrompt built:\n\n" + prompt
+            response = call_openai(prompt)
 
         st.subheader("Result")
         st.markdown(response)
-
-
-if __name__ == "__main__":
-    render()
