@@ -61,7 +61,7 @@ STEP 2 - When weighing evidence across all four tables, explicitly downweight ca
 
 STEP 3 - Only after deriving this phenotype profile, identify well-characterized oral bacteria whose published phenotype (fermentation strategy, carbon source range, oxygen tolerance, cell/colony morphology) is genuinely consistent with the derived profile - not simply bacteria that happen to share the largest raw count of generic annotated genes. If a well-known genus overlaps only on universal housekeeping categories, exclude it even if its raw overlap count is high.
 
-Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), weighted as described above, not just raw agreement in one table.
+Question: Are there other oral bacteria that have similar gene composition to mine? Use all four tables together - a strong match should show consistent overlap across functional categories (Table 1), KEGG pathways (Table 2), protein function families (Table 3), and completed metabolic pathways (Table 4), weighted as described above, in one table.
 
 Output, in this order:
 1. A short (2-4 sentence) summary of the phenotype profile you derived in Step 1, so the reasoning can be sanity-checked.
@@ -70,7 +70,7 @@ Output, in this order:
 
 List well-characterized bacteria with the most consistent shared, discriminating (not universal) functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
 
-Rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
+Match the qualities with suspect species as a veteran Prof and rank the species and provide your reasoning for each rank. Sort by confidence, with the highest-confidence match listed first.
 """
 
 # ---------------------------------------------------------------------------
