@@ -11,12 +11,6 @@ FOUR processed summary tables derived from three raw annotation files:
   Proksee/Bakta annotations (.tsv)  -> Table 1: Functional category gene counts
   Products.tsv (KEGG-Decoder style) -> Table 4: Metabolic pathway completeness
 
-NOTE: I (Claude) could not reach the actual apps/web/6_similar_oral_bacteria.py
-file in your GenoAnno repo (raw.githubusercontent.com, api.github.com, and the
-GitHub web UI all returned no content in this session), so this is a
-self-contained rewrite based on the DEFAULT_INPUT_DESCRIPTION pattern you
-described for the other four tabs. Drop in your existing helper functions
-(e.g. the LLM call, page config, styling) where marked TODO.
 """
 
 import io
