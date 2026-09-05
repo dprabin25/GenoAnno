@@ -92,6 +92,9 @@ E.g.
 
 <img width="2351" height="689" alt="image" src="https://github.com/user-attachments/assets/5751fc71-7eec-4080-b81c-e42b8fd0022d" />
 
+## Example Inputs for 02-06 apps
+
+- Provided in this Github repo for _Veillonella parvula_
 
 ## Reference
 
