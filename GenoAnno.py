@@ -1,9 +1,6 @@
 # ============================================================
 # GenoAnno Master Streamlit App - Clickable Tool Dashboard
 # Runs six separate Streamlit apps from one professional home screen.
-#
-# How to run:
-#   streamlit run master_app.py
 # ============================================================
 
 from __future__ import annotations
