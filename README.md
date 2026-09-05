@@ -37,11 +37,14 @@ The app itself does no biological inference on its own: it parses and summarizes
 
 
 
-4. Select an OpenAI model, temperature, and maximum token limit.
-5. Click **Use these settings**.
-6. Select a tool and click **Open this tool**.
-7. Upload or paste the required annotation data.
-8. Run the analysis, then review, copy, or download the result.
+3. Select an OpenAI model, temperature, and maximum token limit.
+4. Click **Use these settings**.
+   
+<img width="589" height="58" alt="image" src="https://github.com/user-attachments/assets/ca3e2791-d045-4d0e-96ca-effd0ab8e82d" />
+
+5. Select a tool and click **Open this tool**.
+6. Upload or paste the required annotation data.
+7. Run the analysis, then review, copy, or download the result.
 
 ### Model settings
 
