@@ -49,6 +49,7 @@ See the six tool implementations directly in [`apps/`](https://github.com/dprabi
 
 
 E.g. 
+
 <img width="750" height="199" alt="image" src="https://github.com/user-attachments/assets/5cd1887b-8937-4a61-89fc-d7c5205352d7" />
 
 
