@@ -1,6 +1,6 @@
 # GenoAnno
 
-GenoAnno is a Streamlit web application for interpreting bacterial genome annotation outputs. It provides six tools for pathway expectation, metabolic pathway interpretation, KEGG pathway interpretation, protein-family interpretation, Bakta functional annotation interpretation, and oral-bacteria similarity analysis.
+GenoAnno (https://github.com/dprabin25/GenoAnno) is a Streamlit web application for interpreting bacterial genome annotation outputs. It provides six tools for pathway expectation, metabolic pathway interpretation, KEGG pathway interpretation, protein-family interpretation, Bakta functional annotation interpretation, and oral-bacteria similarity analysis.
 
 ## Tools Included
 
