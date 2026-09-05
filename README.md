@@ -43,8 +43,13 @@ The app itself does no biological inference on its own: it parses and summarizes
 <img width="589" height="58" alt="image" src="https://github.com/user-attachments/assets/ca3e2791-d045-4d0e-96ca-effd0ab8e82d" />
 
 5. Select a tool and click **Open this tool**.
-6. Upload or paste the required annotation data.
-7. Run the analysis, then review, copy, or download the result.
+
+E.g. 
+
+<img width="749" height="196" alt="image" src="https://github.com/user-attachments/assets/11bd012d-46d2-452e-803a-ef3cac3b9927" />
+
+7. Upload or paste the required annotation data.
+8. Run the analysis, then review, copy, or download the result.
 
 ### Model settings
 
