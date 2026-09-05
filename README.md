@@ -10,12 +10,14 @@ The app itself does no biological inference on its own: it parses and summarizes
 
 ## How it works
 
-`GenoAnno.py` is a single entry point — a dashboard that lists all six tools. Selecting a tool and clicking **Open this tool** loads that tool's module from `apps/` in an isolated namespace, so switching tools mid-session never leaks widget state or cached results between them. Each tool follows the same underlying pattern:
+`GenoAnno.py` is a single entry point — a dashboard that lists all six tools. Selecting a tool and clicking **Open this tool** loads that tool's module from [`apps/`](https://github.com/dprabin25/GenoAnno/tree/main/apps) in an isolated namespace, so switching tools mid-session never leaks widget state or cached results between them. Each tool follows the same underlying pattern:
 
 1. Take in the annotation data (typed/pasted for tool 01, uploaded as a file for tools 02–06 — see the input method below).
 2. Count and group the relevant terms (pathways, KEGG IDs, protein families, or functional categories).
 3. Build a structured prompt from those counts and send it to the configured OpenAI model.
 4. Render the model's interpretation alongside the underlying counts table.
+
+See the six tool implementations directly in [`apps/`](https://github.com/dprabin25/GenoAnno/tree/main/apps).
 
 ## Tools
 
@@ -68,24 +70,3 @@ Each user supplies their own OpenAI API key before running an analysis.
 Each tool renders the model's biological interpretation alongside the underlying counts table, with options to copy the text or download the result.
 
 *(screenshot)*
-
-## Troubleshooting
-
-- **"No OpenAI API key found in this session"** — enter a key and click **Use these settings** before opening a tool; the key doesn't carry over between tools until it's saved at the dashboard level.
-- **Analysis fails immediately after running** — the OpenAI request likely errored (invalid/expired key, no access to the selected model, or a rate limit); the error message returned by OpenAI is shown in place of the interpretation.
-- **Empty or all-zero counts** — check that the uploaded file matches the expected input for that tool (see the table above) and uses the expected column layout and delimiter (tab-separated `.tsv` for most tools).
-- **"Upload" doesn't accept pasted text** — that's expected for tools 02–06; only Making Expectation (01) accepts typed/pasted input.
-
-## Project structure
-
-```
-GenoAnno/
-├── GenoAnno.py          # Master app — dashboard and tool launcher
-└── apps/
-    ├── web1_pathway_expectation.py
-    ├── web2_phenotype_grouping.py
-    ├── web3_kegg_pathway_count.py
-    ├── web4_protein_family_count.py
-    ├── web5_bakta_functional_category.py
-    └── web6_similar_oral_bacteria.py
-```
