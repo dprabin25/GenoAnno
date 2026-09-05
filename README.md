@@ -2,7 +2,7 @@
 
 
 
-GenoAnno is a Streamlit application that turns bacterial genome annotation output into phenotype-level biological interpretation. It targets researchers who already have annotation tables from pipelines such as **KBase-DRAM**, **Proksee**, or **Bakta** and want a fast, no-code read on what those genes imply about a bacterium's phenotype — pathway completeness, functional-category composition, and similarity to well-characterized oral bacteria — without writing analysis scripts by hand.
+GenoAnno is a Streamlit application that turns bacterial genome annotation output into phenotype-level biological interpretation. It targets researchers who already have annotation tables from pipelines such as **KBase-DRAM**, **Proksee**, or **Bakta** and want a fast, no-code read on what those genes imply about a bacterium's phenotype: pathway completeness, functional-category composition, and similarity to well-characterized oral bacteria without writing analysis scripts.
 
 The app itself does no biological inference on its own: it parses and summarizes the uploaded annotation table, then sends that structured summary to an OpenAI model (chosen and paid for by the user) to generate the biological interpretation.
 
