@@ -68,49 +68,13 @@ Each user supplies their own OpenAI API key before running an analysis.
 - The key lives only in the current Streamlit session state — it is never written to disk, saved permanently, or shared across sessions or users.
 - It is cleared automatically when the browser session ends, or manually via **Clear API settings from this session**.
 
-## Running locally
-
-```bash
-git clone https://github.com/dprabin25/GenoAnno.git
-cd GenoAnno
-pip install -r requirements.txt
-streamlit run GenoAnno.py
 ```
 
-Open the local Streamlit URL printed in the terminal and follow the same steps as the web version.
+## Outputs
 
-To avoid re-entering an API key every run, set defaults in `config.txt`:
+E.g.
+<img width="2408" height="1066" alt="image" src="https://github.com/user-attachments/assets/1008d3c1-0917-4550-b8a0-0143edebd143" />
+
 
 ```
-KEY=
-DEFAULT_MODEL=gpt-4o-mini
-TEMPERATURE=0.5
-MAX_TOKENS=2000
-```
 
-Leave `KEY` blank for local use and enter it in the app instead, or paste it here for convenience on a machine only you use. On Streamlit Community Cloud, keep `KEY` blank and set it under **App settings → Secrets** instead — never commit a real key to `config.txt`.
-
-## Troubleshooting
-
-- **"No OpenAI API key found in this session"** — enter a key and click **Use these settings** before opening a tool; the key doesn't carry over between tools until it's saved at the dashboard level.
-- **Analysis fails immediately after running** — the OpenAI request likely errored (invalid/expired key, no access to the selected model, or a rate limit); the error message returned by OpenAI is shown in place of the interpretation.
-- **Empty or all-zero counts** — check that the uploaded file matches the expected input for that tool (see the table above) and uses the expected column layout and delimiter (tab-separated `.tsv` for most tools).
-
-## Project structure
-
-```
-GenoAnno/
-├── GenoAnno.py          # Master app — dashboard and tool launcher
-├── config.txt           # Default model/temperature/token settings
-├── requirements.txt
-└── apps/
-    ├── web1_pathway_expectation.py
-    ├── web2_phenotype_grouping.py
-    ├── web3_kegg_pathway_count.py
-    ├── web4_protein_family_count.py
-    ├── web5_bakta_functional_category.py
-    └── web6_similar_oral_bacteria.py
-```
-
-
-Exact pinned versions are in `requirements.txt`, tested against the tool code in this repository.
