@@ -12,7 +12,7 @@ The app itself does no biological inference on its own: it parses and summarizes
 
 `GenoAnno.py` is a single entry point — a dashboard that lists all six tools. Selecting a tool and clicking **Open this tool** loads that tool's module from `apps/` in an isolated namespace, so switching tools mid-session never leaks widget state or cached results between them. Each tool follows the same underlying pattern:
 
-1. Parse the uploaded/pasted annotation table (tab- or comma-separated).
+1. Parse the uploaded annotation table (tab- or comma-separated).
 2. Count and group the relevant terms (pathways, KEGG IDs, protein families, or functional categories).
 3. Build a structured prompt from those counts and send it to the configured OpenAI model.
 4. Render the model's interpretation alongside the underlying counts table.
