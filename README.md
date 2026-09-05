@@ -95,11 +95,5 @@ GenoAnno/
     └── web6_similar_oral_bacteria.py
 ```
 
-## Requirements
-
-- Python 3.9+
-- [streamlit](https://streamlit.io/) 1.63.0
-- [openai](https://pypi.org/project/openai/) 3.8.0
-- [pandas](https://pandas.pydata.org/) 3.0.5
 
 Exact pinned versions are in `requirements.txt`, tested against the tool code in this repository.
