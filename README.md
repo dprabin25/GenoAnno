@@ -33,7 +33,8 @@ The app itself does no biological inference on its own: it parses and summarizes
 1. Open the [GenoAnno app](https://genoanno.streamlit.app/).
 2. Enter your OpenAI API key in the API settings section.
 
-<img width="2428" height="425" alt="image" src="https://github.com/user-attachments/assets/2b246af4-224a-4eef-82a8-0bf920ddb651" />
+<img width="348" height="81" alt="image" src="https://github.com/user-attachments/assets/931501ef-48a2-447d-ad68-3ab60663a3bf" />
+
 
 
 4. Select an OpenAI model, temperature, and maximum token limit.
