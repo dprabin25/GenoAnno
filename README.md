@@ -68,13 +68,14 @@ Each user supplies their own OpenAI API key before running an analysis.
 - The key lives only in the current Streamlit session state — it is never written to disk, saved permanently, or shared across sessions or users.
 - It is cleared automatically when the browser session ends, or manually via **Clear API settings from this session**.
 
-```
+
 
 ## Outputs
 
 E.g.
+
 <img width="2408" height="1066" alt="image" src="https://github.com/user-attachments/assets/1008d3c1-0917-4550-b8a0-0143edebd143" />
 
 
-```
+
 
