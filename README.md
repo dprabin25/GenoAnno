@@ -42,14 +42,14 @@ See the six tool implementations directly in [`apps/`](https://github.com/dprabi
 
 3. Select an OpenAI model, temperature, and maximum token limit, then click **Use these settings**.
 
- <img width="614" height="93" alt="image" src="https://github.com/user-attachments/assets/b56812a0-7720-41fa-b69b-2f5fe04b3687" />
+<img width="614" height="93" alt="image" src="https://github.com/user-attachments/assets/b56812a0-7720-41fa-b69b-2f5fe04b3687" />
 
 
 4. Select a tool and click **Open this tool**.
 
 
 E.g. 
-   <img width="750" height="199" alt="image" src="https://github.com/user-attachments/assets/5cd1887b-8937-4a61-89fc-d7c5205352d7" />
+<img width="750" height="199" alt="image" src="https://github.com/user-attachments/assets/5cd1887b-8937-4a61-89fc-d7c5205352d7" />
 
 
 5. Scroll down and provide your data:
