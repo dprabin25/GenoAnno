@@ -98,7 +98,7 @@ E.g.
 
 ## Reference
 
-[1] Connor Pasvantis, Preston Wgunn,.... Prabin Dawadi, Sayaka Miura. Large language model assistance for interpreting oral microbiota phenotype (2026) Under Review.
+[1] Connor Pasvantis, Preston Wgunn,.... Prabin Dawadi, Sayaka Miura. Large language model assistance for interpreting oral microbiota phenotype (2026). Under Review.
 
 ## License
 
