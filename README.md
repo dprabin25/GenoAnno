@@ -51,6 +51,10 @@ E.g.
 7. Upload or paste the required annotation data.
 8. Run the analysis, then review, copy, or download the result.
 
+E.g. 
+<img width="383" height="97" alt="image" src="https://github.com/user-attachments/assets/32e2ea5d-e538-4c1c-b859-1c7ca87590af" />
+
+
 ### Model settings
 
 The dashboard offers `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-4.1`, `gpt-4o`, `gpt-5-mini`, `gpt-5`, or a custom model name. Reasoning-style models (the `gpt-5` family) don't accept a fixed `temperature` or `max_tokens` on the chat-completions endpoint — GenoAnno detects this automatically and retries the request with the parameters those models do accept, so no manual adjustment is needed when switching models.
