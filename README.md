@@ -19,6 +19,8 @@ The app itself does no biological inference on its own: it parses and summarizes
 
 See the six tool implementations directly in [`apps/`](https://github.com/dprabin25/GenoAnno/tree/main/apps).
 
+
+
 ## Tools
 
 | # | Tool | Purpose | Input method | Expected input |
@@ -35,41 +37,61 @@ See the six tool implementations directly in [`apps/`](https://github.com/dprabi
 1. Open the [GenoAnno app](https://genoanno.streamlit.app/).
 2. Enter your OpenAI API key in the API settings section.
 
-   *(screenshot)*
+<img width="777" height="99" alt="image" src="https://github.com/user-attachments/assets/1bacf740-ad4d-49b4-b0f4-a7e5536ac4a4" />
+
 
 3. Select an OpenAI model, temperature, and maximum token limit, then click **Use these settings**.
 
-   *(screenshot)*
+ <img width="614" height="93" alt="image" src="https://github.com/user-attachments/assets/b56812a0-7720-41fa-b69b-2f5fe04b3687" />
+
 
 4. Select a tool and click **Open this tool**.
 
-   *(screenshot)*
 
-5. Provide your data:
+E.g. 
+   <img width="750" height="199" alt="image" src="https://github.com/user-attachments/assets/5cd1887b-8937-4a61-89fc-d7c5205352d7" />
+
+
+5. Scroll down and provide your data:
    - **Making Expectation (01):** the form loads with an editable example already filled in — type over it or paste your own pathway list and phenotype description.
    - **All other tools (02–06):** upload your annotation file. There is no paste option for these — a file is required.
+
+E.g. 
+
+<img width="379" height="117" alt="image" src="https://github.com/user-attachments/assets/9dec0f22-7b11-46e8-9cb2-dfa17d8a48c2" />
+
+
 6. Run the analysis, then review, copy, or download the result.
 
-   *(screenshot)*
+E.g.
 
-## Model settings
+<img width="379" height="120" alt="image" src="https://github.com/user-attachments/assets/7075dd43-344c-4a06-b3ae-860bfc4d6046" />
+
+   
+## Notes
+
+### Model settings
 
 The dashboard offers `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-4.1`, `gpt-4o`, `gpt-5-mini`, `gpt-5`, or a custom model name. Reasoning-style models (the `gpt-5` family) don't accept a fixed `temperature` or `max_tokens` on the chat-completions endpoint — GenoAnno detects this automatically and retries the request with the parameters those models do accept, so no manual adjustment is needed when switching models.
 
 You are billed directly by OpenAI for any requests GenoAnno makes on your behalf; GenoAnno itself does not add a markup or fee.
 
-## OpenAI API key handling
+### OpenAI API key handling
 
 Each user supplies their own OpenAI API key before running an analysis.
 
 - The key lives only in the current Streamlit session state — it is never written to disk, saved permanently, or shared across sessions or users.
 - It is cleared automatically when the browser session ends, or manually via **Clear API settings from this session**.
 
+
 ## Outputs
 
 Each tool renders the model's biological interpretation alongside the underlying counts table, with options to copy the text or download the result.
 
-*(screenshot)*
+E.g. 
+
+<img width="2351" height="689" alt="image" src="https://github.com/user-attachments/assets/5751fc71-7eec-4080-b81c-e42b8fd0022d" />
+
 
 ## Reference
 
