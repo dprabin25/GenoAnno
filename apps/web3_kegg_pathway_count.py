@@ -147,34 +147,46 @@ client = OpenAI(api_key=API_KEY)
 
 
 # ============================================================
-# Default editable chunks
+# Exact KEGG pathway interpretation prompt
 # ============================================================
-DEFAULT_AI_ROLE = """A Veteran Professor in Biological Science"""
+EXACT_PROMPT_TEMPLATE = """Prompt for KEGG pathway interpretation
 
-DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome and assigned each gene to its corresponding KEGG pathway. For each KEGG pathway, I counted the number of genes mapped.
+1. AI role
 
-The processed input table contains two columns:
-Column 1: KEGG pathways
-Column 2: Gene count
+You are an expert in oral microbiology, bacterial gene regulatory mechanisms, and microbial physiology. Your task is to interpret gene regulatory pathway information from a bacterial genome and generate evidence-based candidate phenotypes.
 
-Only the processed KEGG pathway count table should be used for phenotype grouping."""
+2. Input description
 
-DEFAULT_ANALYSIS = """Using the processed KEGG pathway count table, group the KEGG pathways into biologically meaningful phenotypes. Give more weight to pathways with higher gene counts, but do not overclaim phenotype prediction from count alone."""
+The bacterial genome (an oral bacterium) has been annotated, and genes have been assigned to KEGG pathways. The input table contains two columns:
 
-DEFAULT_REPORTING = """Generate an output table with the following three columns:
+Column 1: KEGG pathway — the name of the gene regulatory pathway.
 
-1. Phenotype
-2. Associated pathways
-3. Explanation describing how the listed KEGG pathways support or define the phenotype
+Column 2: Gene count — the number of genes within the pathway.
 
-Formatting rules:
-- Use a clean markdown table.
-- Do not use HTML tags.
-- Do not use <br>, <br/>, or <br />.
-- If multiple pathways belong to the same phenotype, separate them using semicolons.
-- Keep each table cell readable and concise.
+The table below has already been processed, and generic or uninformative pathways were removed. {processed table text}
 
-Finally, provide a brief overall summary describing the predicted phenotype(s) of the bacterium based on these KEGG pathway groupings."""
+3. Analysis instructions
+
+Using only the KEGG pathways provided in the input table:
+
+1. Group related pathways into biologically meaningful candidate phenotype categories.
+2. Explain the biological relationship between the associated pathways and the candidate phenotype.
+3. Give more weight to pathways with higher gene counts, but do not overclaim phenotype prediction from count alone.
+4. Do not use pathways that are absent from the input table as evidence.
+5. Do not introduce phenotypes that cannot be reasonably supported by the provided pathway information.
+6. Do not force every pathway into a phenotype category. If a pathway does not provide sufficient information to support a meaningful phenotype, it may be left ungrouped.
+7. Prefer biologically specific phenotype categories over overly broad categories such as “metabolism” or “energy production.”
+
+4. Reporting instructions
+
+Generate a table with the following three columns:
+
+Column 1: Candidate phenotype — Provide a concise description of a potential bacterial characteristic.
+
+Column 2: Associated pathways — List the KEGG pathways supporting the phenotype. If multiple pathways belong to the same phenotype, separate them using semicolons.
+
+Column 3: Evidence-based explanation — Explain how the associated pathways collectively support the candidate phenotype. Do not provide evidence beyond the information available from the input pathways.
+"""
 
 
 # ============================================================
@@ -301,53 +313,17 @@ def dataframe_to_tsv_text(df):
     return df.to_csv(sep="\t", index=False)
 
 
-def build_prompt(
-    ai_role,
-    input_description,
-    processed_table_text,
-    top10_table_text,
-    include_top10,
-    analysis,
-    reporting,
-):
-    if include_top10:
-        top10_section = f"""
-Top 10 KEGG pathway pivot/count table, including all pathways tied at the 10th position:
-{top10_table_text}
-""".strip()
-    else:
-        top10_section = "Top 10 KEGG pathway pivot/count table was not requested."
-
-    final_prompt = f"""
-1. AI role:
-{ai_role}
-
-2. Input:
-{input_description}
-
-Processed KEGG pathway count table:
-{processed_table_text}
-
-{top10_section}
-
-3. Analysis:
-{analysis}
-
-4. Reporting instructions:
-{reporting}
-""".strip()
-
-    return final_prompt
+def build_prompt(processed_table_text):
+    return EXACT_PROMPT_TEMPLATE.replace(
+        "{processed table text}",
+        processed_table_text.strip(),
+    )
 
 
-def generate_output(final_prompt, ai_role):
+def generate_output(final_prompt):
     response = client.chat.completions.create(
         model=DEFAULT_MODEL,
         messages=[
-            {
-                "role": "system",
-                "content": ai_role,
-            },
             {
                 "role": "user",
                 "content": final_prompt,
@@ -593,19 +569,12 @@ st.markdown(
 
 
 # ============================================================
-# 1. AI role
+# Fixed prompt
 # ============================================================
-st.markdown('<div class="section-title">1. AI role</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Prompt</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Define the biological expertise and reasoning style for KEGG pathway interpretation.</div>',
+    '<div class="section-note">The KEGG interpretation prompt is fixed exactly as specified. The processed KEGG pathway count table is inserted automatically.</div>',
     unsafe_allow_html=True,
-)
-
-ai_role = st.text_area(
-    "AI role",
-    value=DEFAULT_AI_ROLE,
-    height=110,
-    label_visibility="collapsed",
 )
 
 
@@ -616,13 +585,6 @@ st.markdown('<div class="section-title">2. Input</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="section-note">Upload a TSV annotation file and select the column containing KEGG pathway or gene-function terms.</div>',
     unsafe_allow_html=True,
-)
-
-input_description = st.text_area(
-    "Input description",
-    value=DEFAULT_INPUT_DESCRIPTION,
-    height=190,
-    label_visibility="collapsed",
 )
 
 uploaded_file = st.file_uploader(
@@ -761,51 +723,11 @@ else:
 
 
 # ============================================================
-# 3. Analysis
-# ============================================================
-st.markdown('<div class="section-title">3. Analysis</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define how the KEGG pathway count table should be interpreted.</div>',
-    unsafe_allow_html=True,
-)
-
-analysis = st.text_area(
-    "Analysis",
-    value=DEFAULT_ANALYSIS,
-    height=140,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
-# 4. Reporting instructions
-# ============================================================
-st.markdown('<div class="section-title">4. Reporting instructions</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define the expected output structure.</div>',
-    unsafe_allow_html=True,
-)
-
-reporting = st.text_area(
-    "Reporting instructions",
-    value=DEFAULT_REPORTING,
-    height=240,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
 # Final prompt preview and generation
 # ============================================================
 if processed_table_text is not None:
     final_prompt = build_prompt(
-        ai_role=ai_role.strip(),
-        input_description=input_description.strip(),
         processed_table_text=processed_table_text,
-        top10_table_text=top10_table_text,
-        include_top10=include_top10,
-        analysis=analysis.strip(),
-        reporting=reporting.strip(),
     )
 
     with st.expander("Preview final prompt sent to model", expanded=False):
@@ -821,22 +743,13 @@ if processed_table_text is not None:
     generate_button = st.button("Generate phenotype grouping")
 
     if generate_button:
-        if not ai_role.strip():
-            st.warning("Please enter the AI role.")
-        elif not input_description.strip():
-            st.warning("Please enter the input description.")
-        elif count_df is None or count_df.empty:
+        if count_df is None or count_df.empty:
             st.warning("No KEGG pathway terms were found. Please check the selected column.")
-        elif not analysis.strip():
-            st.warning("Please enter the analysis instructions.")
-        elif not reporting.strip():
-            st.warning("Please enter the reporting instructions.")
         else:
             with st.spinner("Generating phenotype grouping..."):
                 try:
                     output = generate_output(
                         final_prompt=final_prompt,
-                        ai_role=ai_role.strip(),
                     )
 
                     output = clean_model_output(output)
