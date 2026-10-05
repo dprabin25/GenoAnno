@@ -105,7 +105,7 @@ def inject_css() -> None:
         """
 <style>
 :root {
-    --ga-bg: #f5f7fb;
+    --ga-bg: #f4f6f9;
     --ga-surface: #ffffff;
     --ga-surface-soft: #f8fafc;
     --ga-text: #111827;
@@ -114,8 +114,8 @@ def inject_css() -> None:
     --ga-primary: #1d4ed8;
     --ga-primary-dark: #1e3a8a;
     --ga-accent: #0f766e;
-    --ga-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.06);
-    --ga-shadow-md: 0 18px 45px rgba(15, 23, 42, 0.09);
+    --ga-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
+    --ga-shadow-md: 0 18px 42px rgba(15, 23, 42, 0.08);
 }
 
 .stApp {
@@ -124,7 +124,7 @@ def inject_css() -> None:
 }
 
 header[data-testid="stHeader"] {
-    background: rgba(245, 247, 251, 0.94) !important;
+    background: rgba(244, 246, 249, 0.94) !important;
     backdrop-filter: blur(14px) !important;
     border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
 }
@@ -134,164 +134,156 @@ header[data-testid="stHeader"] {
 }
 
 .block-container {
-    max-width: 1320px !important;
-    padding-top: 1.25rem !important;
-    padding-left: 2rem !important;
-    padding-right: 2rem !important;
-    padding-bottom: 4rem !important;
+    max-width: 1480px !important;
+    padding-top: 1rem !important;
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
+    padding-bottom: 3rem !important;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Brand header ---------- */
 .ga-topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.25rem;
-    padding: 1.35rem 1.55rem;
-    margin-bottom: 1rem;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.9rem;
     border: 1px solid var(--ga-border);
-    border-radius: 22px;
+    border-radius: 18px;
     background: var(--ga-surface);
     box-shadow: var(--ga-shadow-sm);
 }
 
 .ga-brand-kicker {
     color: var(--ga-primary);
-    font-size: 0.76rem;
+    font-size: 0.72rem;
     font-weight: 900;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.15rem;
 }
 
 .ga-brand-title {
     margin: 0;
     color: var(--ga-text);
-    font-size: 2rem;
+    font-size: 1.8rem;
     line-height: 1.05;
     font-weight: 950;
-    letter-spacing: -0.055em;
+    letter-spacing: -0.05em;
 }
 
 .ga-brand-subtitle {
-    margin-top: 0.45rem;
+    margin-top: 0.35rem;
     color: var(--ga-muted);
-    font-size: 0.98rem;
-    line-height: 1.55;
-    max-width: 820px;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    max-width: 900px;
 }
 
 .ga-status-pill {
     flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    padding: 0.5rem 0.8rem;
+    padding: 0.45rem 0.72rem;
     border-radius: 999px;
     border: 1px solid #bfdbfe;
     background: #eff6ff;
     color: #1e40af;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 850;
 }
 
-/* ---------- Section headers ---------- */
-.ga-section {
-    margin-top: 1.2rem;
-}
-
-.ga-section-title {
-    color: var(--ga-text);
-    font-size: 1.35rem;
-    font-weight: 950;
-    letter-spacing: -0.04em;
-    margin-bottom: 0.22rem;
-}
-
-.ga-section-subtitle {
-    color: var(--ga-muted);
-    font-size: 0.96rem;
-    line-height: 1.55;
-    margin-bottom: 0.9rem;
-}
-
-/* ---------- Tool cards ---------- */
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 18px !important;
-    border: 1px solid var(--ga-border) !important;
-    background: var(--ga-surface) !important;
-    box-shadow: var(--ga-shadow-sm) !important;
-}
-
-.ga-tool-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.55rem;
-    border-radius: 10px;
-    background: #eff6ff;
-    color: var(--ga-primary-dark);
-    font-size: 0.76rem;
-    font-weight: 950;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.7rem;
-}
-
-.ga-tool-title {
-    color: var(--ga-text);
-    font-size: 1.06rem;
-    font-weight: 900;
-    line-height: 1.3;
-    letter-spacing: -0.025em;
-    margin-bottom: 0.4rem;
-}
-
-.ga-tool-desc {
-    color: var(--ga-muted);
-    font-size: 0.91rem;
-    line-height: 1.55;
-    min-height: 5.7rem;
-}
-
-/* ---------- Active tool workspace ---------- */
-.ga-workspace-head {
-    margin-top: 1.3rem;
-    padding: 1.2rem 1.35rem;
+/* ---------- Navigation panel ---------- */
+.ga-nav-shell {
+    position: sticky;
+    top: 4.4rem;
+    padding: 1rem;
     border-radius: 18px;
+    background: var(--ga-surface);
+    border: 1px solid var(--ga-border);
+    box-shadow: var(--ga-shadow-sm);
+}
+
+.ga-nav-title {
+    color: var(--ga-text);
+    font-size: 0.94rem;
+    font-weight: 900;
+    margin-bottom: 0.15rem;
+}
+
+.ga-nav-subtitle {
+    color: var(--ga-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-bottom: 0.85rem;
+}
+
+.ga-nav-divider {
+    height: 1px;
+    background: var(--ga-border);
+    margin: 0.75rem 0;
+}
+
+.ga-nav-active {
+    margin-top: 0.75rem;
+    padding: 0.75rem 0.8rem;
+    border-radius: 12px;
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+}
+
+.ga-nav-active-label {
+    color: var(--ga-primary);
+    font-size: 0.67rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.ga-nav-active-title {
+    color: var(--ga-text);
+    font-size: 0.86rem;
+    font-weight: 900;
+    margin-top: 0.18rem;
+    line-height: 1.3;
+}
+
+/* ---------- Workspace ---------- */
+.ga-workspace-head {
+    padding: 1rem 1.15rem;
+    border-radius: 16px;
     background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
     border: 1px solid #dbeafe;
+    margin-bottom: 0.75rem;
 }
 
 .ga-workspace-kicker {
     color: var(--ga-primary);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 900;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
 .ga-workspace-title {
-    margin-top: 0.22rem;
+    margin-top: 0.18rem;
     color: var(--ga-text);
-    font-size: 1.45rem;
+    font-size: 1.35rem;
     font-weight: 950;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.035em;
 }
 
 .ga-workspace-desc {
-    margin-top: 0.3rem;
+    margin-top: 0.25rem;
     color: var(--ga-muted);
-    font-size: 0.95rem;
-    line-height: 1.55;
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 .ga-empty-state {
-    margin-top: 1.2rem;
-    padding: 1.5rem;
+    padding: 2.2rem 1.5rem;
     border: 1px dashed #cbd5e1;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.72);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.78);
     text-align: center;
 }
 
@@ -304,13 +296,22 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 .ga-empty-desc {
     color: var(--ga-muted);
     margin-top: 0.3rem;
-    font-size: 0.92rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
-/* ---------- API settings ---------- */
+.ga-app-frame {
+    padding: 0.7rem;
+    border-radius: 18px;
+    border: 1px solid var(--ga-border);
+    background: var(--ga-surface);
+    box-shadow: var(--ga-shadow-md);
+}
+
+/* ---------- OpenAI box ---------- */
 .ga-api-summary {
-    padding: 1rem 1.1rem;
-    border-radius: 16px;
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
     border: 1px solid var(--ga-border);
     background: var(--ga-surface);
     box-shadow: var(--ga-shadow-sm);
@@ -319,37 +320,33 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 
 .ga-api-title {
     color: var(--ga-text);
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 900;
 }
 
 .ga-api-desc {
     color: var(--ga-muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
-    margin-top: 0.25rem;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    margin-top: 0.2rem;
 }
 
-/* ---------- Child app frame ---------- */
-.ga-app-frame {
-    margin-top: 0.8rem;
-    padding: 0.8rem;
-    border-radius: 20px;
-    border: 1px solid var(--ga-border);
-    background: var(--ga-surface);
-    box-shadow: var(--ga-shadow-md);
+/* ---------- Navigation buttons ---------- */
+div[data-testid="stButton"] > button {
+    border-radius: 11px !important;
+    min-height: 2.5rem;
+    font-weight: 800 !important;
+    box-shadow: none !important;
 }
 
-/* ---------- Streamlit controls ---------- */
 .stButton > button,
 .stDownloadButton > button {
-    border-radius: 12px !important;
+    border-radius: 11px !important;
     border: 1px solid transparent !important;
     background: var(--ga-primary) !important;
     color: white !important;
     font-weight: 850 !important;
     box-shadow: none !important;
-    min-height: 2.65rem;
 }
 
 .stButton > button:hover,
@@ -358,12 +355,17 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     border-color: var(--ga-primary-dark) !important;
 }
 
+/* Secondary-looking navigation buttons */
+div[data-testid="stHorizontalBlock"] div[data-testid="column"]:first-child .stButton > button {
+    width: 100%;
+}
+
 div[data-testid="stTextArea"] textarea,
 div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stSelectbox"] > div > div,
 div[data-testid="stFileUploader"] {
-    border-radius: 12px !important;
+    border-radius: 11px !important;
     border-color: var(--ga-border) !important;
 }
 
@@ -373,26 +375,23 @@ div[data-testid="stFileUploader"] {
 
 div[data-testid="stExpander"] {
     border: 1px solid var(--ga-border) !important;
-    border-radius: 14px !important;
+    border-radius: 12px !important;
     background: var(--ga-surface) !important;
 }
 
-hr {
-    border-color: var(--ga-border) !important;
-}
-
-@media (max-width: 900px) {
+@media (max-width: 950px) {
     .ga-topbar {
         display: block;
     }
 
     .ga-status-pill {
-        margin-top: 0.9rem;
+        display: inline-block;
+        margin-top: 0.75rem;
     }
 
     .block-container {
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
     }
 }
 </style>
@@ -741,41 +740,48 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
     )
 
 
-def render_tool_launcher() -> None:
-    st.markdown('<div class="ga-section">', unsafe_allow_html=True)
+def render_left_navigation(active_app: str | None) -> None:
+    st.markdown('<div class="ga-nav-shell">', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ga-section-title">Choose an analysis tool</div>',
+        '<div class="ga-nav-title">Analysis tools</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="ga-section-subtitle">Each tool opens in the workspace below. Switching tools clears the previous generated output so results never carry over between analyses.</div>',
+        '<div class="ga-nav-subtitle">Select a tool to open it in the workspace.</div>',
         unsafe_allow_html=True,
     )
 
-    app_items = list(APP_FILES.keys())
+    for app_name in APP_FILES:
+        label = f"{APP_NUMBERS[app_name]}  {app_name}"
 
-    for row_start in range(0, len(app_items), 3):
-        cols = st.columns(3, gap="medium")
+        if st.button(
+            label,
+            key=f"nav_{app_prefix(app_name)}",
+            use_container_width=True,
+        ):
+            switch_active_app(app_name)
+            st.rerun()
 
-        for col, app_name in zip(cols, app_items[row_start: row_start + 3]):
-            with col:
-                with st.container(border=True):
-                    st.markdown(
-                        f"""
-<div class="ga-tool-number">{APP_NUMBERS[app_name]}</div>
-<div class="ga-tool-title">{app_name}</div>
-<div class="ga-tool-desc">{APP_DESCRIPTIONS[app_name]}</div>
-                        """.strip(),
-                        unsafe_allow_html=True,
-                    )
+    if active_app is not None:
+        st.markdown('<div class="ga-nav-divider"></div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+<div class="ga-nav-active">
+    <div class="ga-nav-active-label">Current tool</div>
+    <div class="ga-nav-active-title">{active_app}</div>
+</div>
+            """.strip(),
+            unsafe_allow_html=True,
+        )
 
-                    if st.button(
-                        "Open tool",
-                        key=f"open_{app_prefix(app_name)}",
-                        use_container_width=True,
-                    ):
-                        switch_active_app(app_name)
-                        st.rerun()
+        if st.button(
+            "Close current tool",
+            key="nav_close_current",
+            use_container_width=True,
+        ):
+            clear_child_transient_state(previous_app=active_app)
+            st.session_state["active_app"] = None
+            st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -792,17 +798,7 @@ def render_selected_app_header(app_name: str) -> None:
         unsafe_allow_html=True,
     )
 
-    col_back, col_clear, col_space = st.columns([1, 1, 5])
-
-    with col_back:
-        if st.button(
-            "Close tool",
-            key="close_active_tool",
-            use_container_width=True,
-        ):
-            clear_child_transient_state(previous_app=app_name)
-            st.session_state["active_app"] = None
-            st.rerun()
+    col_clear, col_space = st.columns([1, 5])
 
     with col_clear:
         if st.button(
@@ -827,9 +823,6 @@ def main() -> None:
     if "active_app" not in st.session_state:
         st.session_state["active_app"] = None
 
-    render_hero(config_ready=config_ready, child_apps_ready=child_apps_ready)
-    render_tool_launcher()
-
     active_app = st.session_state.get("active_app")
 
     if active_app is not None and active_app not in APP_FILES:
@@ -837,27 +830,37 @@ def main() -> None:
         st.session_state["active_app"] = None
         active_app = None
 
-    if active_app is None:
-        st.session_state.pop("output", None)
+    render_hero(
+        config_ready=config_ready,
+        child_apps_ready=child_apps_ready,
+    )
 
-        st.markdown(
-            """
+    nav_col, workspace_col = st.columns([1.2, 4.8], gap="large")
+
+    with nav_col:
+        render_left_navigation(active_app=active_app)
+
+    with workspace_col:
+        if active_app is None:
+            st.session_state.pop("output", None)
+
+            st.markdown(
+                """
 <div class="ga-empty-state">
-    <div class="ga-empty-title">No analysis tool is open</div>
+    <div class="ga-empty-title">Select an analysis tool</div>
     <div class="ga-empty-desc">
-        Choose one of the six tools above. Only the selected tool is loaded,
-        keeping the workspace clean and preventing outputs from other tools
-        from appearing here.
+        Choose a tool from the left navigation. The selected analysis will open
+        here, and previous generated output will be cleared automatically when
+        switching tools.
     </div>
 </div>
-            """.strip(),
-            unsafe_allow_html=True,
-        )
-        return
+                """.strip(),
+                unsafe_allow_html=True,
+            )
+            return
 
-    render_selected_app_header(active_app)
+        render_selected_app_header(active_app)
 
-    with st.container():
         st.markdown('<div class="ga-app-frame">', unsafe_allow_html=True)
         run_child_app(active_app)
         st.markdown('</div>', unsafe_allow_html=True)
