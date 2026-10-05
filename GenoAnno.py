@@ -105,314 +105,295 @@ def inject_css() -> None:
         """
 <style>
 :root {
-    --ga-bg-1: #f7fbff;
-    --ga-bg-2: #edf4ff;
-    --ga-text: #0f172a;
-    --ga-muted: #5f6b7a;
-    --ga-border: rgba(148, 163, 184, 0.32);
-    --ga-primary: #1e40af;
-    --ga-primary-2: #0f766e;
-    --ga-card: rgba(255, 255, 255, 0.86);
-    --ga-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
-    --ga-soft-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+    --ga-bg: #f5f7fb;
+    --ga-surface: #ffffff;
+    --ga-surface-soft: #f8fafc;
+    --ga-text: #111827;
+    --ga-muted: #64748b;
+    --ga-border: #e2e8f0;
+    --ga-primary: #1d4ed8;
+    --ga-primary-dark: #1e3a8a;
+    --ga-accent: #0f766e;
+    --ga-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.06);
+    --ga-shadow-md: 0 18px 45px rgba(15, 23, 42, 0.09);
 }
 
 .stApp {
-    background:
-        radial-gradient(circle at 10% 5%, rgba(30, 64, 175, 0.13), transparent 30%),
-        radial-gradient(circle at 90% 4%, rgba(15, 118, 110, 0.14), transparent 32%),
-        linear-gradient(135deg, var(--ga-bg-1) 0%, var(--ga-bg-2) 52%, #f9fbff 100%) !important;
+    background: var(--ga-bg) !important;
     color: var(--ga-text) !important;
 }
 
 header[data-testid="stHeader"] {
-    background: rgba(248, 251, 255, 0.76) !important;
-    backdrop-filter: blur(18px) !important;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18) !important;
+    background: rgba(245, 247, 251, 0.94) !important;
+    backdrop-filter: blur(14px) !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
 }
 
-#MainMenu, footer { visibility: hidden !important; }
+#MainMenu, footer {
+    visibility: hidden !important;
+}
 
 .block-container {
-    max-width: 94% !important;
+    max-width: 1320px !important;
     padding-top: 1.25rem !important;
-    padding-left: 2.2rem !important;
-    padding-right: 2.2rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
     padding-bottom: 4rem !important;
 }
 
-.ga-hero {
-    position: relative;
-    overflow: hidden;
-    border-radius: 30px;
-    padding: 2.8rem 3rem;
-    margin-bottom: 1.25rem;
-    background:
-        linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 58, 138, 0.95) 52%, rgba(15, 118, 110, 0.92));
-    color: white;
-    box-shadow: var(--ga-shadow);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.ga-hero::after {
-    content: "";
-    position: absolute;
-    right: -80px;
-    top: -100px;
-    width: 420px;
-    height: 420px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.10);
-}
-
-.ga-hero-content {
-    position: relative;
-    z-index: 2;
-    max-width: 1120px;
-}
-
-.ga-badge-row {
+/* ---------- Header ---------- */
+.ga-topbar {
     display: flex;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.15rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1.35rem 1.55rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--ga-border);
+    border-radius: 22px;
+    background: var(--ga-surface);
+    box-shadow: var(--ga-shadow-sm);
 }
 
-.ga-badge {
+.ga-brand-kicker {
+    color: var(--ga-primary);
+    font-size: 0.76rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+}
+
+.ga-brand-title {
+    margin: 0;
+    color: var(--ga-text);
+    font-size: 2rem;
+    line-height: 1.05;
+    font-weight: 950;
+    letter-spacing: -0.055em;
+}
+
+.ga-brand-subtitle {
+    margin-top: 0.45rem;
+    color: var(--ga-muted);
+    font-size: 0.98rem;
+    line-height: 1.55;
+    max-width: 820px;
+}
+
+.ga-status-pill {
+    flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    padding: 0.42rem 0.82rem;
+    padding: 0.5rem 0.8rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    color: #e0f2fe;
-    font-size: 0.86rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-}
-
-.ga-hero h1 {
-    margin: 0;
-    font-size: clamp(2.5rem, 5vw, 4.8rem);
-    line-height: 0.96;
-    font-weight: 950;
-    letter-spacing: -0.075em;
-}
-
-.ga-hero h1 span {
-    background: linear-gradient(90deg, #ffffff 0%, #c7f9ef 48%, #dbeafe 100%);
-    -webkit-background-clip: text;
-    color: transparent;
-}
-
-.ga-hero p {
-    margin-top: 1.2rem;
-    margin-bottom: 0;
-    max-width: 980px;
-    color: #e5efff;
-    font-size: 1.14rem;
-    line-height: 1.72;
-}
-
-.ga-stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1rem;
-    margin: 1.15rem 0 1.45rem 0;
-}
-
-.ga-stat-card {
-    border-radius: 22px;
-    padding: 1.18rem 1.22rem;
-    background: var(--ga-card);
-    backdrop-filter: blur(18px);
-    border: 1px solid var(--ga-border);
-    box-shadow: var(--ga-soft-shadow);
-}
-
-.ga-stat-label {
-    color: var(--ga-muted);
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1e40af;
     font-size: 0.82rem;
     font-weight: 850;
-    text-transform: uppercase;
-    letter-spacing: 0.075em;
 }
 
-.ga-stat-value {
-    color: var(--ga-text);
-    font-size: 1.55rem;
-    font-weight: 950;
-    margin-top: 0.34rem;
-    letter-spacing: -0.04em;
+/* ---------- Section headers ---------- */
+.ga-section {
+    margin-top: 1.2rem;
 }
 
 .ga-section-title {
-    margin-top: 0.25rem;
-    margin-bottom: 0.2rem;
     color: var(--ga-text);
-    font-size: 1.55rem;
+    font-size: 1.35rem;
     font-weight: 950;
-    letter-spacing: -0.045em;
+    letter-spacing: -0.04em;
+    margin-bottom: 0.22rem;
 }
 
 .ga-section-subtitle {
     color: var(--ga-muted);
-    margin-bottom: 1rem;
-    font-size: 1rem;
+    font-size: 0.96rem;
+    line-height: 1.55;
+    margin-bottom: 0.9rem;
+}
+
+/* ---------- Tool cards ---------- */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 18px !important;
+    border: 1px solid var(--ga-border) !important;
+    background: var(--ga-surface) !important;
+    box-shadow: var(--ga-shadow-sm) !important;
 }
 
 .ga-tool-number {
-    display: inline-block;
-    min-width: 2.4rem;
-    text-align: center;
-    padding: 0.2rem 0.55rem;
-    border-radius: 999px;
-    background: rgba(30, 64, 175, 0.10);
-    color: #1e3a8a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.55rem;
+    border-radius: 10px;
+    background: #eff6ff;
+    color: var(--ga-primary-dark);
+    font-size: 0.76rem;
     font-weight: 950;
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.65rem;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.7rem;
 }
 
 .ga-tool-title {
     color: var(--ga-text);
-    font-size: 1.16rem;
-    font-weight: 950;
-    letter-spacing: -0.035em;
+    font-size: 1.06rem;
+    font-weight: 900;
+    line-height: 1.3;
+    letter-spacing: -0.025em;
     margin-bottom: 0.4rem;
 }
 
 .ga-tool-desc {
     color: var(--ga-muted);
-    font-size: 0.95rem;
+    font-size: 0.91rem;
     line-height: 1.55;
-    min-height: 4.4rem;
+    min-height: 5.7rem;
 }
 
-.ga-selected-bar {
-    margin-top: 1.2rem;
-    margin-bottom: 0.8rem;
-    border-radius: 24px;
-    padding: 1.1rem 1.25rem;
-    background: linear-gradient(135deg, rgba(30, 64, 175, 0.10), rgba(15, 118, 110, 0.10));
-    border: 1px solid rgba(30, 64, 175, 0.16);
+/* ---------- Active tool workspace ---------- */
+.ga-workspace-head {
+    margin-top: 1.3rem;
+    padding: 1.2rem 1.35rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
+    border: 1px solid #dbeafe;
 }
 
-.ga-selected-label {
-    color: var(--ga-muted);
-    font-size: 0.78rem;
-    text-transform: uppercase;
+.ga-workspace-kicker {
+    color: var(--ga-primary);
+    font-size: 0.75rem;
     font-weight: 900;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
 }
 
-.ga-selected-title {
+.ga-workspace-title {
+    margin-top: 0.22rem;
     color: var(--ga-text);
     font-size: 1.45rem;
     font-weight: 950;
-    letter-spacing: -0.045em;
-    margin-top: 0.15rem;
+    letter-spacing: -0.04em;
 }
 
-.ga-selected-desc {
+.ga-workspace-desc {
+    margin-top: 0.3rem;
     color: var(--ga-muted);
-    margin-top: 0.25rem;
-    font-size: 0.98rem;
+    font-size: 0.95rem;
+    line-height: 1.55;
 }
 
+.ga-empty-state {
+    margin-top: 1.2rem;
+    padding: 1.5rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.72);
+    text-align: center;
+}
 
+.ga-empty-title {
+    color: var(--ga-text);
+    font-weight: 900;
+    font-size: 1.05rem;
+}
 
-.ga-api-box {
-    margin-top: 1.1rem;
-    margin-bottom: 1.2rem;
-    border-radius: 26px;
-    padding: 1.4rem 1.5rem;
-    background: rgba(255, 255, 255, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.32);
-    box-shadow: var(--ga-soft-shadow);
+.ga-empty-desc {
+    color: var(--ga-muted);
+    margin-top: 0.3rem;
+    font-size: 0.92rem;
+}
+
+/* ---------- API settings ---------- */
+.ga-api-summary {
+    padding: 1rem 1.1rem;
+    border-radius: 16px;
+    border: 1px solid var(--ga-border);
+    background: var(--ga-surface);
+    box-shadow: var(--ga-shadow-sm);
+    margin-bottom: 0.75rem;
 }
 
 .ga-api-title {
     color: var(--ga-text);
-    font-size: 1.45rem;
-    font-weight: 950;
-    letter-spacing: -0.045em;
-    margin-bottom: 0.35rem;
+    font-size: 1rem;
+    font-weight: 900;
 }
 
 .ga-api-desc {
     color: var(--ga-muted);
-    font-size: 0.98rem;
-    line-height: 1.6;
-    margin-bottom: 0.7rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-top: 0.25rem;
 }
 
-.ga-api-good {
-    color: #166534;
-    font-weight: 900;
-}
-
-.ga-api-warning {
-    color: #92400e;
-    font-weight: 900;
-}
-
+/* ---------- Child app frame ---------- */
 .ga-app-frame {
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    border-radius: 28px;
-    padding: 1rem;
-    box-shadow: var(--ga-soft-shadow);
-    margin-top: 0.7rem;
+    margin-top: 0.8rem;
+    padding: 0.8rem;
+    border-radius: 20px;
+    border: 1px solid var(--ga-border);
+    background: var(--ga-surface);
+    box-shadow: var(--ga-shadow-md);
 }
 
+/* ---------- Streamlit controls ---------- */
 .stButton > button,
 .stDownloadButton > button {
-    border-radius: 14px !important;
-    border: 0 !important;
-    background: linear-gradient(135deg, #1e40af, #0f766e) !important;
+    border-radius: 12px !important;
+    border: 1px solid transparent !important;
+    background: var(--ga-primary) !important;
     color: white !important;
-    font-weight: 900 !important;
-    box-shadow: 0 13px 28px rgba(30, 64, 175, 0.20) !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    font-weight: 850 !important;
+    box-shadow: none !important;
+    min-height: 2.65rem;
 }
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 18px 36px rgba(30, 64, 175, 0.28) !important;
-}
-
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 24px !important;
-    background: rgba(255, 255, 255, 0.72) !important;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06) !important;
+    background: var(--ga-primary-dark) !important;
+    border-color: var(--ga-primary-dark) !important;
 }
 
 div[data-testid="stTextArea"] textarea,
 div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
-div[data-testid="stSelectbox"] div,
+div[data-testid="stSelectbox"] > div > div,
 div[data-testid="stFileUploader"] {
-    border-radius: 16px !important;
-    border-color: rgba(148, 163, 184, 0.38) !important;
+    border-radius: 12px !important;
+    border-color: var(--ga-border) !important;
 }
 
 div[data-testid="stFileUploader"] {
-    background: rgba(255, 255, 255, 0.78) !important;
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05) !important;
+    background: var(--ga-surface-soft) !important;
 }
 
-@media (max-width: 1100px) {
-    .ga-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .ga-hero { padding: 2rem; }
+div[data-testid="stExpander"] {
+    border: 1px solid var(--ga-border) !important;
+    border-radius: 14px !important;
+    background: var(--ga-surface) !important;
 }
 
-@media (max-width: 740px) {
-    .ga-stats { grid-template-columns: 1fr; }
-    .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
-    .ga-hero { border-radius: 22px; padding: 1.6rem; }
+hr {
+    border-color: var(--ga-border) !important;
+}
+
+@media (max-width: 900px) {
+    .ga-topbar {
+        display: block;
+    }
+
+    .ga-status-pill {
+        margin-top: 0.9rem;
+    }
+
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
 }
 </style>
         """.strip(),
@@ -540,6 +521,37 @@ def app_prefix(app_name: str) -> str:
     return f"app{names.index(app_name) + 1}"
 
 
+def clear_child_transient_state(previous_app: str | None = None) -> None:
+    """
+    Clear transient analysis results when moving between tools.
+
+    Child apps currently store generated model text in the shared session key
+    "output". Without clearing it, the previous tool's result can appear in the
+    next tool before a new analysis is run.
+    """
+    st.session_state.pop("output", None)
+
+    # Also clear common transient result-like keys if child apps add them later.
+    transient_exact_keys = {
+        "analysis_output",
+        "generated_output",
+        "model_output",
+        "result",
+        "results",
+    }
+    for key in list(st.session_state.keys()):
+        if key in transient_exact_keys:
+            st.session_state.pop(key, None)
+
+
+def switch_active_app(app_name: str) -> None:
+    previous_app = st.session_state.get("active_app")
+
+    if previous_app != app_name:
+        clear_child_transient_state(previous_app=previous_app)
+        st.session_state["active_app"] = app_name
+
+
 def run_child_app(app_name: str) -> None:
     filename = APP_FILES[app_name]
     app_path = APPS_DIR / filename
@@ -557,14 +569,8 @@ def run_child_app(app_name: str) -> None:
 
 def api_key_setup() -> bool:
     """
-    Collect OpenAI settings from the website user.
-
-    Stored only in st.session_state for the current browser session:
-    - user_openai_api_key
-    - user_selected_model
-    - user_temperature
-    - user_max_tokens
-    Nothing is written to GitHub or any local app file.
+    Collect OpenAI settings for the current browser session.
+    Settings remain in st.session_state and are never written to app files.
     """
 
     if st.session_state.get("user_openai_api_key", ""):
@@ -574,124 +580,139 @@ def api_key_setup() -> bool:
 
         st.markdown(
             f"""
-<div class="ga-api-box">
-    <div class="ga-api-title">OpenAI settings active for this session</div>
+<div class="ga-api-summary">
+    <div class="ga-api-title">OpenAI connection ready</div>
     <div class="ga-api-desc">
-        Your API key is stored only in this browser session. Current model: <b>{active_model}</b>;
-        temperature: <b>{active_temperature}</b>; max tokens: <b>{active_max_tokens}</b>.
-        You can clear these settings below before sharing the screen or closing work.
+        Model: <b>{active_model}</b> &nbsp;·&nbsp;
+        Temperature: <b>{active_temperature}</b> &nbsp;·&nbsp;
+        Max tokens: <b>{active_max_tokens}</b>
     </div>
 </div>
             """.strip(),
             unsafe_allow_html=True,
         )
 
-        if st.button("Clear API settings from this session", key="clear_user_api_settings"):
-            for session_key in [
-                "user_openai_api_key",
-                "user_selected_model",
-                "user_temperature",
-                "user_max_tokens",
-            ]:
-                st.session_state.pop(session_key, None)
-            st.success("API settings cleared from this session.")
-            st.rerun()
+        with st.expander("OpenAI settings", expanded=False):
+            st.caption(
+                "Your API key is stored only in the current Streamlit browser session."
+            )
+
+            col_a, col_b = st.columns([1, 3])
+            with col_a:
+                if st.button(
+                    "Clear session settings",
+                    key="clear_user_api_settings",
+                    use_container_width=True,
+                ):
+                    for session_key in [
+                        "user_openai_api_key",
+                        "user_selected_model",
+                        "user_temperature",
+                        "user_max_tokens",
+                    ]:
+                        st.session_state.pop(session_key, None)
+
+                    clear_child_transient_state(
+                        previous_app=st.session_state.get("active_app")
+                    )
+                    st.session_state["active_app"] = None
+                    st.rerun()
+
+            with col_b:
+                st.caption(
+                    "Clear the session before handing the browser to another person."
+                )
 
         return True
 
     st.markdown(
         """
-<div class="ga-api-box">
-    <div class="ga-api-title">Enter your OpenAI API settings</div>
+<div class="ga-api-summary">
+    <div class="ga-api-title">Connect OpenAI to begin</div>
     <div class="ga-api-desc">
-        This app uses OpenAI only when you run an analysis. Enter your own API key and choose the model.
-        The settings are stored only for this browser session and are not saved to GitHub or any app file.
+        Enter your API key and choose the model once. The settings are kept only
+        for this browser session.
     </div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
     )
 
-    user_key = st.text_input(
-        "OpenAI API key",
-        type="password",
-        placeholder="sk-...",
-        key="user_openai_api_key_input",
-        help="Paste your own OpenAI API key. It is kept only in the current Streamlit session.",
-    )
-
-    col_model, col_temp, col_tokens = st.columns([2, 1, 1])
-
-    with col_model:
-        selected_model_option = st.selectbox(
-            "Model",
-            MODEL_OPTIONS,
-            index=0,
-            key="user_model_select",
-            help="Choose the OpenAI model used by all six GenoAnno tools.",
+    with st.expander("OpenAI settings", expanded=True):
+        user_key = st.text_input(
+            "OpenAI API key",
+            type="password",
+            placeholder="sk-...",
+            key="user_openai_api_key_input",
+            help="Stored only in the current Streamlit session.",
         )
 
-        custom_model = ""
-        if selected_model_option == "Custom model name":
-            custom_model = st.text_input(
-                "Custom model name",
-                placeholder="Example: gpt-4o-mini",
-                key="user_custom_model_name",
+        col_model, col_temp, col_tokens = st.columns([2, 1, 1])
+
+        with col_model:
+            selected_model_option = st.selectbox(
+                "Model",
+                MODEL_OPTIONS,
+                index=0,
+                key="user_model_select",
             )
 
-    with col_temp:
-        selected_temperature = st.number_input(
-            "Temperature",
-            min_value=0.0,
-            max_value=2.0,
-            value=0.5,
-            step=0.1,
-            key="user_temperature_input",
-            help="Lower values are more deterministic; higher values are more creative.",
+            custom_model = ""
+            if selected_model_option == "Custom model name":
+                custom_model = st.text_input(
+                    "Custom model name",
+                    placeholder="Example: gpt-4o-mini",
+                    key="user_custom_model_name",
+                )
+
+        with col_temp:
+            selected_temperature = st.number_input(
+                "Temperature",
+                min_value=0.0,
+                max_value=2.0,
+                value=0.5,
+                step=0.1,
+                key="user_temperature_input",
+            )
+
+        with col_tokens:
+            selected_max_tokens = st.number_input(
+                "Max tokens",
+                min_value=256,
+                max_value=16000,
+                value=2000,
+                step=256,
+                key="user_max_tokens_input",
+            )
+
+        save_clicked = st.button(
+            "Connect and continue",
+            key="save_user_api_settings",
+            use_container_width=True,
         )
 
-    with col_tokens:
-        selected_max_tokens = st.number_input(
-            "Max tokens",
-            min_value=256,
-            max_value=16000,
-            value=2000,
-            step=256,
-            key="user_max_tokens_input",
-            help="Maximum output length requested from the model.",
-        )
+        if save_clicked:
+            cleaned_key = user_key.strip()
 
-    col1, col2 = st.columns([1, 3])
+            if not cleaned_key:
+                st.error("Please enter an OpenAI API key.")
+                return False
 
-    with col1:
-        save_clicked = st.button("Use these settings", key="save_user_api_settings", use_container_width=True)
+            final_model = (
+                custom_model.strip()
+                if selected_model_option == "Custom model name"
+                else selected_model_option
+            )
 
-    with col2:
-        st.caption("No password is required. Users provide their own API key and model choice before opening the analysis tools.")
+            if not final_model:
+                st.error("Please choose a model or enter a custom model name.")
+                return False
 
-    if save_clicked:
-        cleaned_key = user_key.strip()
-
-        if not cleaned_key:
-            st.error("Please enter an OpenAI API key.")
-            return False
-
-        if not cleaned_key.startswith("sk-"):
-            st.warning("This does not look like a standard OpenAI API key. If it is correct, the app will still try to use it.")
-
-        final_model = custom_model.strip() if selected_model_option == "Custom model name" else selected_model_option
-
-        if not final_model:
-            st.error("Please choose a model or enter a custom model name.")
-            return False
-
-        st.session_state["user_openai_api_key"] = cleaned_key
-        st.session_state["user_selected_model"] = final_model
-        st.session_state["user_temperature"] = float(selected_temperature)
-        st.session_state["user_max_tokens"] = int(selected_max_tokens)
-
-        st.success("API settings saved for this session.")
-        st.rerun()
+            st.session_state["user_openai_api_key"] = cleaned_key
+            st.session_state["user_selected_model"] = final_model
+            st.session_state["user_temperature"] = float(selected_temperature)
+            st.session_state["user_max_tokens"] = int(selected_max_tokens)
+            st.rerun()
 
     return False
 
@@ -699,44 +720,21 @@ def api_key_setup() -> bool:
 # Page sections
 # ============================================================
 def render_hero(config_ready: bool, child_apps_ready: int) -> None:
-    status_text = "Ready" if config_ready else "Needs key"
+    status_text = "OpenAI ready" if config_ready else "OpenAI setup required"
 
     st.markdown(
         f"""
-<div class="ga-hero">
-    <div class="ga-hero-content">
-        <div class="ga-badge-row">
-            <div class="ga-badge">Genome annotation suite</div>
-            <div class="ga-badge">Oral microbiology focused</div>
-            <div class="ga-badge">AI-assisted interpretation</div>
+<div class="ga-topbar">
+    <div>
+        <div class="ga-brand-kicker">Genome annotation interpretation suite</div>
+        <h1 class="ga-brand-title">GenoAnno</h1>
+        <div class="ga-brand-subtitle">
+            A focused workspace for pathway, protein-family, gene-function,
+            phenotype, and oral-bacteria interpretation.
+            {child_apps_ready}/{len(APP_FILES)} analysis tools detected.
         </div>
-        <h1>GenoAnno <span>Master Suite</span></h1>
-        <p>
-       From bacterial genome annotations to AI-guided biological insights.
-        </p>
-        <p>
-Interpret pathways, phenotype signals, protein-family patterns, functional categories, and oral-bacteria similarity.
-        </p>
     </div>
-</div>
-
-<div class="ga-stats">
-    <div class="ga-stat-card">
-        <div class="ga-stat-label">Available tools</div>
-        <div class="ga-stat-value">{len(APP_FILES)}</div>
-    </div>
-    <div class="ga-stat-card">
-        <div class="ga-stat-label">Detected app files</div>
-        <div class="ga-stat-value">{child_apps_ready}/{len(APP_FILES)}</div>
-    </div>
-    <div class="ga-stat-card">
-        <div class="ga-stat-label">OpenAI setup</div>
-        <div class="ga-stat-value">{status_text}</div>
-    </div>
-    <div class="ga-stat-card">
-        <div class="ga-stat-label">Interface</div>
-        <div class="ga-stat-value">Tool launcher</div>
-    </div>
+    <div class="ga-status-pill">{status_text}</div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
@@ -744,15 +742,21 @@ Interpret pathways, phenotype signals, protein-family patterns, functional categ
 
 
 def render_tool_launcher() -> None:
-    st.markdown('<div class="ga-section-title">Analysis tools</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ga-section">', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ga-section-subtitle">Choose a tool, then click Open this tool. No analysis app loads until you click Open.</div>',
+        '<div class="ga-section-title">Choose an analysis tool</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="ga-section-subtitle">Each tool opens in the workspace below. Switching tools clears the previous generated output so results never carry over between analyses.</div>',
         unsafe_allow_html=True,
     )
 
     app_items = list(APP_FILES.keys())
+
     for row_start in range(0, len(app_items), 3):
-        cols = st.columns(3)
+        cols = st.columns(3, gap="medium")
+
         for col, app_name in zip(cols, app_items[row_start: row_start + 3]):
             with col:
                 with st.container(border=True):
@@ -764,22 +768,50 @@ def render_tool_launcher() -> None:
                         """.strip(),
                         unsafe_allow_html=True,
                     )
-                    if st.button("Open this tool", key=f"open_{app_prefix(app_name)}", use_container_width=True):
-                        st.session_state["active_app"] = app_name
+
+                    if st.button(
+                        "Open tool",
+                        key=f"open_{app_prefix(app_name)}",
+                        use_container_width=True,
+                    ):
+                        switch_active_app(app_name)
                         st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_selected_app_header(app_name: str) -> None:
     st.markdown(
         f"""
-<div class="ga-selected-bar">
-    <div class="ga-selected-label">Selected analysis tool</div>
-    <div class="ga-selected-title">{app_name}</div>
-    <div class="ga-selected-desc">{APP_DESCRIPTIONS[app_name]}</div>
+<div class="ga-workspace-head">
+    <div class="ga-workspace-kicker">Active workspace</div>
+    <div class="ga-workspace-title">{app_name}</div>
+    <div class="ga-workspace-desc">{APP_DESCRIPTIONS[app_name]}</div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
     )
+
+    col_back, col_clear, col_space = st.columns([1, 1, 5])
+
+    with col_back:
+        if st.button(
+            "Close tool",
+            key="close_active_tool",
+            use_container_width=True,
+        ):
+            clear_child_transient_state(previous_app=app_name)
+            st.session_state["active_app"] = None
+            st.rerun()
+
+    with col_clear:
+        if st.button(
+            "Clear output",
+            key="clear_active_output",
+            use_container_width=True,
+        ):
+            clear_child_transient_state(previous_app=app_name)
+            st.rerun()
 
 
 def main() -> None:
@@ -800,13 +832,23 @@ def main() -> None:
 
     active_app = st.session_state.get("active_app")
 
+    if active_app is not None and active_app not in APP_FILES:
+        clear_child_transient_state(previous_app=active_app)
+        st.session_state["active_app"] = None
+        active_app = None
+
     if active_app is None:
+        st.session_state.pop("output", None)
+
         st.markdown(
             """
-<div class="ga-selected-bar">
-    <div class="ga-selected-label">No tool opened</div>
-    <div class="ga-selected-title">Select a tool and click Open this tool</div>
-    <div class="ga-selected-desc">The six analysis apps stay unloaded until you intentionally open one.</div>
+<div class="ga-empty-state">
+    <div class="ga-empty-title">No analysis tool is open</div>
+    <div class="ga-empty-desc">
+        Choose one of the six tools above. Only the selected tool is loaded,
+        keeping the workspace clean and preventing outputs from other tools
+        from appearing here.
+    </div>
 </div>
             """.strip(),
             unsafe_allow_html=True,
