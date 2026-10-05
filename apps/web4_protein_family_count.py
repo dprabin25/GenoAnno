@@ -154,36 +154,48 @@ client = OpenAI(api_key=API_KEY)
 
 
 # ============================================================
-# Default editable chunks
+# Exact protein-family interpretation prompt
 # ============================================================
-DEFAULT_AI_ROLE = """A Veteran Professor in Biological Science"""
+EXACT_PROMPT_TEMPLATE = """Prompt for protein-family interpretation
 
-DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome and assigned each gene to its corresponding protein function family. For each protein function family, I counted the number of genes mapped.
+1. AI role
 
-The processed input table contains two columns:
-Column 1: Protein function family
-Column 2: Gene count
+You are an expert in oral microbiology, bacterial proteins, and microbial physiology. Your task is to interpret protein family information from a bacterial genome and generate evidence-based candidate phenotypes.
 
-Only the processed protein function family count table should be used for phenotype grouping."""
+2. Input description
 
-DEFAULT_ANALYSIS = """Using the processed protein function family count table, group the protein function families into biologically meaningful phenotypes. Give more weight to protein families with higher gene counts, but do not overclaim phenotype prediction from count alone."""
+The bacterial genome (an oral bacterium) has been annotated, and genes have been assigned to protein function families. The input table contains two columns:
 
-DEFAULT_REPORTING = """Generate an output table with the following three columns:
+Column 1: Protein function family — the name of the protein function family.
 
-1. Phenotype
-2. Associated protein family
-3. Explanation describing how the listed protein families support or define the phenotype
+Column 2: Gene count — the number of genes within the protein function family.
 
-Formatting rules:
-- Use a clean markdown table.
-- Do not use HTML tags.
-- Do not use <br>, <br/>, or <br />.
-- If multiple protein families belong to the same phenotype, separate them using semicolons.
-- Keep each table cell readable and concise.
-- Do not invent functions that are not supported by the protein family names.
-- If a protein family is poorly characterized or unknown, describe the interpretation as uncertain.
+The table below has already been processed, and generic or uninformative protein families were removed.
 
-Finally, provide a brief overall summary describing the predicted phenotype(s) of the bacterium based on these protein family groupings."""
+{processed table text}
+
+3. Analysis instructions
+
+Using only the protein function families provided in the input table:
+
+1. Group related protein function families into biologically meaningful candidate phenotype categories.
+2. Explain the biological relationship between the associated protein function families and the candidate phenotype.
+3. Give more weight to protein function families with higher gene counts, but do not overclaim phenotype prediction from count alone.
+4. Do not use protein function families that are absent from the input table as evidence.
+5. Do not introduce phenotypes that cannot be reasonably supported by the provided protein function family information.
+6. Do not force every protein function family into a phenotype category. If a protein function family does not provide sufficient information to support a meaningful phenotype, it may be left ungrouped.
+7. Prefer biologically specific phenotype categories over overly broad categories such as “metabolism” or “energy production.”
+
+4. Reporting instructions
+
+Generate a table with the following three columns:
+
+Column 1: Candidate phenotype — Provide a concise description of a potential bacterial characteristic.
+
+Column 2: Associated protein families — List the protein families supporting the phenotype. If multiple families belong to the same phenotype, separate them using semicolons.
+
+Column 3: Evidence-based explanation — Explain how the associated families collectively support the candidate phenotype. Do not provide evidence beyond the information available from the input protein families.
+"""
 
 
 # ============================================================
@@ -313,53 +325,17 @@ def dataframe_to_tsv_text(df):
     return df.to_csv(sep="\t", index=False)
 
 
-def build_prompt(
-    ai_role,
-    input_description,
-    processed_table_text,
-    top10_table_text,
-    include_top10,
-    analysis,
-    reporting,
-):
-    if include_top10:
-        top10_section = f"""
-Top 10 protein function family pivot/count table, including all protein families tied at the 10th position:
-{top10_table_text}
-""".strip()
-    else:
-        top10_section = "Top 10 protein function family pivot/count table was not requested."
-
-    final_prompt = f"""
-1. AI role:
-{ai_role}
-
-2. Input:
-{input_description}
-
-Processed protein function family count table:
-{processed_table_text}
-
-{top10_section}
-
-3. Analysis:
-{analysis}
-
-4. Reporting instructions:
-{reporting}
-""".strip()
-
-    return final_prompt
+def build_prompt(processed_table_text):
+    return EXACT_PROMPT_TEMPLATE.replace(
+        "{processed table text}",
+        processed_table_text.strip(),
+    )
 
 
-def generate_output(final_prompt, ai_role):
+def generate_output(final_prompt):
     response = client.chat.completions.create(
         model=DEFAULT_MODEL,
         messages=[
-            {
-                "role": "system",
-                "content": ai_role,
-            },
             {
                 "role": "user",
                 "content": final_prompt,
@@ -605,19 +581,12 @@ st.markdown(
 
 
 # ============================================================
-# 1. AI role
+# Fixed prompt
 # ============================================================
-st.markdown('<div class="section-title">1. AI role</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Prompt</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Define the biological expertise and reasoning style for protein family interpretation.</div>',
+    '<div class="section-note">The protein-family interpretation prompt is fixed exactly as specified. The processed protein-family count table is inserted automatically.</div>',
     unsafe_allow_html=True,
-)
-
-ai_role = st.text_area(
-    "AI role",
-    value=DEFAULT_AI_ROLE,
-    height=110,
-    label_visibility="collapsed",
 )
 
 
@@ -628,13 +597,6 @@ st.markdown('<div class="section-title">2. Input</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="section-note">Upload a TSV annotation file and select the column containing protein function family terms.</div>',
     unsafe_allow_html=True,
-)
-
-input_description = st.text_area(
-    "Input description",
-    value=DEFAULT_INPUT_DESCRIPTION,
-    height=190,
-    label_visibility="collapsed",
 )
 
 uploaded_file = st.file_uploader(
@@ -773,51 +735,11 @@ else:
 
 
 # ============================================================
-# 3. Analysis
-# ============================================================
-st.markdown('<div class="section-title">3. Analysis</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define how the protein family count table should be interpreted.</div>',
-    unsafe_allow_html=True,
-)
-
-analysis = st.text_area(
-    "Analysis",
-    value=DEFAULT_ANALYSIS,
-    height=140,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
-# 4. Reporting instructions
-# ============================================================
-st.markdown('<div class="section-title">4. Reporting instructions</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define the expected output structure.</div>',
-    unsafe_allow_html=True,
-)
-
-reporting = st.text_area(
-    "Reporting instructions",
-    value=DEFAULT_REPORTING,
-    height=260,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
 # Final prompt preview and generation
 # ============================================================
 if processed_table_text is not None:
     final_prompt = build_prompt(
-        ai_role=ai_role.strip(),
-        input_description=input_description.strip(),
         processed_table_text=processed_table_text,
-        top10_table_text=top10_table_text,
-        include_top10=include_top10,
-        analysis=analysis.strip(),
-        reporting=reporting.strip(),
     )
 
     with st.expander("Preview final prompt sent to model", expanded=False):
@@ -833,22 +755,13 @@ if processed_table_text is not None:
     generate_button = st.button("Generate phenotype grouping")
 
     if generate_button:
-        if not ai_role.strip():
-            st.warning("Please enter the AI role.")
-        elif not input_description.strip():
-            st.warning("Please enter the input description.")
-        elif count_df is None or count_df.empty:
+        if count_df is None or count_df.empty:
             st.warning("No protein function family terms were found. Please check the selected column.")
-        elif not analysis.strip():
-            st.warning("Please enter the analysis instructions.")
-        elif not reporting.strip():
-            st.warning("Please enter the reporting instructions.")
         else:
             with st.spinner("Generating phenotype grouping..."):
                 try:
                     output = generate_output(
                         final_prompt=final_prompt,
-                        ai_role=ai_role.strip(),
                     )
 
                     output = clean_model_output(output)
