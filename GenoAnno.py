@@ -105,17 +105,22 @@ def inject_css() -> None:
         """
 <style>
 :root {
-    --ga-bg: #f4f6f9;
+    --ga-bg: #f4f6f8;
     --ga-surface: #ffffff;
     --ga-surface-soft: #f8fafc;
-    --ga-text: #111827;
+    --ga-text: #0f172a;
     --ga-muted: #64748b;
+    --ga-muted-2: #94a3b8;
     --ga-border: #e2e8f0;
+    --ga-border-strong: #cbd5e1;
     --ga-primary: #1d4ed8;
     --ga-primary-dark: #1e3a8a;
+    --ga-primary-soft: #eff6ff;
     --ga-accent: #0f766e;
-    --ga-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
-    --ga-shadow-md: 0 18px 42px rgba(15, 23, 42, 0.08);
+    --ga-success: #166534;
+    --ga-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.03);
+    --ga-shadow-sm: 0 6px 20px rgba(15, 23, 42, 0.055);
+    --ga-shadow-md: 0 18px 48px rgba(15, 23, 42, 0.075);
 }
 
 .stApp {
@@ -124,9 +129,10 @@ def inject_css() -> None:
 }
 
 header[data-testid="stHeader"] {
-    background: rgba(244, 246, 249, 0.94) !important;
+    background: rgba(244, 246, 248, 0.97) !important;
     backdrop-filter: blur(14px) !important;
     border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+    z-index: 999 !important;
 }
 
 #MainMenu, footer {
@@ -134,14 +140,16 @@ header[data-testid="stHeader"] {
 }
 
 .block-container {
-    max-width: 1480px !important;
-    padding-top: 1rem !important;
-    padding-left: 1.25rem !important;
-    padding-right: 1.25rem !important;
+    max-width: 1500px !important;
+    padding-top: 4.6rem !important;
+    padding-left: 1.3rem !important;
+    padding-right: 1.3rem !important;
     padding-bottom: 3rem !important;
 }
 
-/* ---------- Brand header ---------- */
+/* ============================================================
+   MASTER HEADER
+   ============================================================ */
 .ga-topbar {
     display: flex;
     align-items: center;
@@ -150,203 +158,338 @@ header[data-testid="stHeader"] {
     padding: 1rem 1.25rem;
     margin-bottom: 0.9rem;
     border: 1px solid var(--ga-border);
-    border-radius: 18px;
+    border-radius: 16px;
     background: var(--ga-surface);
-    box-shadow: var(--ga-shadow-sm);
+    box-shadow: var(--ga-shadow-xs);
 }
 
 .ga-brand-kicker {
     color: var(--ga-primary);
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 900;
-    letter-spacing: 0.11em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin-bottom: 0.15rem;
+    margin-bottom: 0.18rem;
 }
 
 .ga-brand-title {
     margin: 0;
     color: var(--ga-text);
-    font-size: 1.8rem;
-    line-height: 1.05;
+    font-size: 1.85rem;
+    line-height: 1.02;
     font-weight: 950;
-    letter-spacing: -0.05em;
+    letter-spacing: -0.055em;
 }
 
 .ga-brand-subtitle {
-    margin-top: 0.35rem;
+    margin-top: 0.34rem;
     color: var(--ga-muted);
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     line-height: 1.45;
     max-width: 900px;
 }
 
 .ga-status-pill {
     flex: 0 0 auto;
-    padding: 0.45rem 0.72rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.42rem 0.7rem;
     border-radius: 999px;
-    border: 1px solid #bfdbfe;
-    background: #eff6ff;
-    color: #1e40af;
-    font-size: 0.78rem;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+    font-size: 0.76rem;
     font-weight: 850;
 }
 
-/* ---------- Navigation panel ---------- */
+.ga-status-dot {
+    width: 0.48rem;
+    height: 0.48rem;
+    border-radius: 999px;
+    background: #22c55e;
+}
+
+/* ============================================================
+   LEFT NAVIGATION RAIL
+   ============================================================ */
 .ga-nav-shell {
     position: sticky;
-    top: 4.4rem;
-    padding: 1rem;
-    border-radius: 18px;
+    top: 5.35rem;
+    padding: 0.9rem;
+    border-radius: 16px;
     background: var(--ga-surface);
     border: 1px solid var(--ga-border);
     box-shadow: var(--ga-shadow-sm);
 }
 
+.ga-nav-brand {
+    padding: 0.15rem 0.15rem 0.75rem 0.15rem;
+}
+
 .ga-nav-title {
     color: var(--ga-text);
-    font-size: 0.94rem;
+    font-size: 0.92rem;
     font-weight: 900;
-    margin-bottom: 0.15rem;
+    margin-bottom: 0.12rem;
 }
 
 .ga-nav-subtitle {
     color: var(--ga-muted);
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     line-height: 1.4;
-    margin-bottom: 0.85rem;
 }
 
 .ga-nav-divider {
     height: 1px;
     background: var(--ga-border);
-    margin: 0.75rem 0;
+    margin: 0.7rem 0;
+}
+
+.ga-workflow {
+    padding: 0.72rem 0.75rem;
+    border-radius: 11px;
+    background: var(--ga-surface-soft);
+    border: 1px solid var(--ga-border);
+    margin-bottom: 0.75rem;
+}
+
+.ga-workflow-title {
+    color: var(--ga-text);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.075em;
+    margin-bottom: 0.45rem;
+}
+
+.ga-workflow-step {
+    color: var(--ga-muted);
+    font-size: 0.72rem;
+    line-height: 1.55;
+}
+
+.ga-workflow-step b {
+    color: var(--ga-text);
 }
 
 .ga-nav-active {
-    margin-top: 0.75rem;
-    padding: 0.75rem 0.8rem;
-    border-radius: 12px;
-    background: #eff6ff;
-    border: 1px solid #dbeafe;
+    margin-top: 0.72rem;
+    padding: 0.72rem 0.8rem;
+    border-radius: 11px;
+    background: var(--ga-primary-soft);
+    border-left: 3px solid var(--ga-primary);
+    border-top: 1px solid #dbeafe;
+    border-right: 1px solid #dbeafe;
+    border-bottom: 1px solid #dbeafe;
 }
 
 .ga-nav-active-label {
     color: var(--ga-primary);
-    font-size: 0.67rem;
+    font-size: 0.63rem;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.09em;
 }
 
 .ga-nav-active-title {
     color: var(--ga-text);
-    font-size: 0.86rem;
+    font-size: 0.82rem;
     font-weight: 900;
-    margin-top: 0.18rem;
+    margin-top: 0.16rem;
     line-height: 1.3;
 }
 
-/* ---------- Workspace ---------- */
+.ga-connection {
+    padding: 0.72rem 0.75rem;
+    border-radius: 11px;
+    background: #f8fafc;
+    border: 1px solid var(--ga-border);
+    margin-top: 0.72rem;
+}
+
+.ga-connection-row {
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    margin-bottom: 0.3rem;
+}
+
+.ga-connection-dot {
+    width: 0.46rem;
+    height: 0.46rem;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+.ga-connection-title {
+    color: var(--ga-text);
+    font-size: 0.73rem;
+    font-weight: 900;
+}
+
+.ga-connection-meta {
+    color: var(--ga-muted);
+    font-size: 0.69rem;
+    line-height: 1.45;
+}
+
+/* ============================================================
+   WORKSPACE
+   ============================================================ */
 .ga-workspace-head {
-    padding: 1rem 1.15rem;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
-    border: 1px solid #dbeafe;
-    margin-bottom: 0.75rem;
+    padding: 0.95rem 1.1rem;
+    border-radius: 14px;
+    background: var(--ga-surface);
+    border: 1px solid var(--ga-border);
+    box-shadow: var(--ga-shadow-xs);
+    margin-bottom: 0.7rem;
 }
 
 .ga-workspace-kicker {
     color: var(--ga-primary);
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
 .ga-workspace-title {
-    margin-top: 0.18rem;
+    margin-top: 0.16rem;
     color: var(--ga-text);
-    font-size: 1.35rem;
+    font-size: 1.32rem;
     font-weight: 950;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.04em;
 }
 
 .ga-workspace-desc {
-    margin-top: 0.25rem;
+    margin-top: 0.22rem;
     color: var(--ga-muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
+    font-size: 0.86rem;
+    line-height: 1.48;
 }
 
 .ga-empty-state {
-    padding: 2.2rem 1.5rem;
-    border: 1px dashed #cbd5e1;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.78);
+    padding: 3rem 1.5rem;
+    border: 1px dashed var(--ga-border-strong);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.72);
     text-align: center;
 }
 
 .ga-empty-title {
     color: var(--ga-text);
     font-weight: 900;
-    font-size: 1.05rem;
+    font-size: 1.03rem;
 }
 
 .ga-empty-desc {
     color: var(--ga-muted);
-    margin-top: 0.3rem;
-    font-size: 0.9rem;
+    margin-top: 0.28rem;
+    font-size: 0.86rem;
     line-height: 1.5;
 }
 
 .ga-app-frame {
-    padding: 0.7rem;
-    border-radius: 18px;
-    border: 1px solid var(--ga-border);
-    background: var(--ga-surface);
-    box-shadow: var(--ga-shadow-md);
-}
-
-/* ---------- OpenAI box ---------- */
-.ga-api-summary {
-    padding: 0.9rem 1rem;
-    border-radius: 14px;
+    padding: 0.8rem;
+    border-radius: 16px;
     border: 1px solid var(--ga-border);
     background: var(--ga-surface);
     box-shadow: var(--ga-shadow-sm);
-    margin-bottom: 0.75rem;
 }
 
-.ga-api-title {
-    color: var(--ga-text);
-    font-size: 0.95rem;
-    font-weight: 900;
+/* ============================================================
+   NORMALIZE CHILD APPS
+   ============================================================ */
+
+/* Hide duplicate child hero/header blocks. */
+.main-header {
+    display: none !important;
 }
 
-.ga-api-desc {
-    color: var(--ga-muted);
-    font-size: 0.84rem;
-    line-height: 1.45;
-    margin-top: 0.2rem;
+/* Normalize child app page spacing/background. */
+.ga-app-frame .block-container {
+    padding: 0 !important;
+    max-width: 100% !important;
 }
 
-/* ---------- Navigation buttons ---------- */
-div[data-testid="stButton"] > button {
-    border-radius: 11px !important;
-    min-height: 2.5rem;
-    font-weight: 800 !important;
+.ga-app-frame .section-title {
+    color: var(--ga-text) !important;
+    font-size: 1.08rem !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.025em !important;
+    margin-top: 1.15rem !important;
+    margin-bottom: 0.18rem !important;
+}
+
+.ga-app-frame .section-note {
+    color: var(--ga-muted) !important;
+    font-size: 0.82rem !important;
+    line-height: 1.45 !important;
+    margin-bottom: 0.65rem !important;
+}
+
+.ga-app-frame .metric-card {
+    border-radius: 12px !important;
+    border: 1px solid var(--ga-border) !important;
+    background: var(--ga-surface-soft) !important;
     box-shadow: none !important;
+    padding: 0.85rem 0.9rem !important;
 }
 
+.ga-app-frame .metric-card .label {
+    color: var(--ga-muted) !important;
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+}
+
+.ga-app-frame .metric-card .value {
+    color: var(--ga-text) !important;
+    font-size: 1.35rem !important;
+    font-weight: 950 !important;
+}
+
+.ga-app-frame .output-panel,
+.ga-app-frame .save-panel {
+    border-radius: 13px !important;
+    border: 1px solid var(--ga-border) !important;
+    background: var(--ga-surface) !important;
+    box-shadow: none !important;
+    padding: 1rem 1.1rem !important;
+}
+
+.ga-app-frame .output-panel h2,
+.ga-app-frame .save-panel h3 {
+    color: var(--ga-text) !important;
+    letter-spacing: -0.03em !important;
+}
+
+.ga-app-frame .output-panel h2 {
+    font-size: 1.25rem !important;
+}
+
+.ga-app-frame .save-panel h3 {
+    font-size: 1rem !important;
+}
+
+.ga-app-frame .divider {
+    background: var(--ga-border) !important;
+    margin: 1.1rem 0 !important;
+}
+
+/* ============================================================
+   STREAMLIT CONTROLS
+   ============================================================ */
 .stButton > button,
 .stDownloadButton > button {
-    border-radius: 11px !important;
+    border-radius: 10px !important;
     border: 1px solid transparent !important;
     background: var(--ga-primary) !important;
     color: white !important;
-    font-weight: 850 !important;
+    font-weight: 800 !important;
     box-shadow: none !important;
+    min-height: 2.45rem;
+    transition: background 0.12s ease, border-color 0.12s ease !important;
 }
 
 .stButton > button:hover,
@@ -355,9 +498,19 @@ div[data-testid="stButton"] > button {
     border-color: var(--ga-primary-dark) !important;
 }
 
-/* Secondary-looking navigation buttons */
-div[data-testid="stHorizontalBlock"] div[data-testid="column"]:first-child .stButton > button {
-    width: 100%;
+/* Make secondary Streamlit buttons actually look secondary when type="secondary". */
+button[kind="secondary"],
+button[data-testid="baseButton-secondary"] {
+    background: #ffffff !important;
+    color: var(--ga-text) !important;
+    border: 1px solid var(--ga-border-strong) !important;
+}
+
+button[kind="secondary"]:hover,
+button[data-testid="baseButton-secondary"]:hover {
+    background: var(--ga-surface-soft) !important;
+    color: var(--ga-primary-dark) !important;
+    border-color: #94a3b8 !important;
 }
 
 div[data-testid="stTextArea"] textarea,
@@ -365,7 +518,7 @@ div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stSelectbox"] > div > div,
 div[data-testid="stFileUploader"] {
-    border-radius: 11px !important;
+    border-radius: 10px !important;
     border-color: var(--ga-border) !important;
 }
 
@@ -375,23 +528,45 @@ div[data-testid="stFileUploader"] {
 
 div[data-testid="stExpander"] {
     border: 1px solid var(--ga-border) !important;
-    border-radius: 12px !important;
+    border-radius: 11px !important;
     background: var(--ga-surface) !important;
+    box-shadow: none !important;
 }
 
-@media (max-width: 950px) {
+/* Cleaner dataframes */
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--ga-border) !important;
+    border-radius: 11px !important;
+    overflow: hidden !important;
+}
+
+/* Reduce excessive markdown spacing inside child apps */
+.ga-app-frame div[data-testid="stMarkdownContainer"] p {
+    line-height: 1.55;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 980px) {
     .ga-topbar {
         display: block;
     }
 
     .ga-status-pill {
-        display: inline-block;
+        display: inline-flex;
         margin-top: 0.75rem;
     }
 
     .block-container {
+        padding-top: 4.4rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
+    }
+
+    .ga-nav-shell {
+        position: relative;
+        top: auto;
     }
 }
 </style>
@@ -522,25 +697,43 @@ def app_prefix(app_name: str) -> str:
 
 def clear_child_transient_state(previous_app: str | None = None) -> None:
     """
-    Clear transient analysis results when moving between tools.
-
-    Child apps currently store generated model text in the shared session key
-    "output". Without clearing it, the previous tool's result can appear in the
-    next tool before a new analysis is run.
+    Clear analysis-only state when moving between tools while preserving the
+    user's OpenAI connection settings.
     """
-    st.session_state.pop("output", None)
-
-    # Also clear common transient result-like keys if child apps add them later.
     transient_exact_keys = {
+        "output",
         "analysis_output",
         "generated_output",
         "model_output",
         "result",
         "results",
+        "processed_table_text",
+        "top10_table_text",
+        "top40_table_text",
     }
+
     for key in list(st.session_state.keys()):
         if key in transient_exact_keys:
             st.session_state.pop(key, None)
+
+    # Remove namespaced child-widget values belonging to the previous tool.
+    # This prevents stale file selections / controls from visually carrying
+    # into a fresh visit to that tool after switching away.
+    if previous_app in APP_FILES:
+        prefix = app_prefix(previous_app) + "_"
+        protected = {
+            "user_openai_api_key",
+            "user_selected_model",
+            "user_temperature",
+            "user_max_tokens",
+            "active_app",
+        }
+
+        for key in list(st.session_state.keys()):
+            if key in protected:
+                continue
+            if str(key).startswith(prefix):
+                st.session_state.pop(key, None)
 
 
 def switch_active_app(app_name: str) -> None:
@@ -569,75 +762,31 @@ def run_child_app(app_name: str) -> None:
 def api_key_setup() -> bool:
     """
     Collect OpenAI settings for the current browser session.
-    Settings remain in st.session_state and are never written to app files.
+
+    When already connected, this function stays visually silent. Connection
+    status and settings are shown compactly in the left navigation rail.
     """
 
     if st.session_state.get("user_openai_api_key", ""):
-        active_model = st.session_state.get("user_selected_model", "gpt-4o-mini")
-        active_temperature = st.session_state.get("user_temperature", 0.5)
-        active_max_tokens = st.session_state.get("user_max_tokens", 2000)
-
-        st.markdown(
-            f"""
-<div class="ga-api-summary">
-    <div class="ga-api-title">OpenAI connection ready</div>
-    <div class="ga-api-desc">
-        Model: <b>{active_model}</b> &nbsp;·&nbsp;
-        Temperature: <b>{active_temperature}</b> &nbsp;·&nbsp;
-        Max tokens: <b>{active_max_tokens}</b>
-    </div>
-</div>
-            """.strip(),
-            unsafe_allow_html=True,
-        )
-
-        with st.expander("OpenAI settings", expanded=False):
-            st.caption(
-                "Your API key is stored only in the current Streamlit browser session."
-            )
-
-            col_a, col_b = st.columns([1, 3])
-            with col_a:
-                if st.button(
-                    "Clear session settings",
-                    key="clear_user_api_settings",
-                    use_container_width=True,
-                ):
-                    for session_key in [
-                        "user_openai_api_key",
-                        "user_selected_model",
-                        "user_temperature",
-                        "user_max_tokens",
-                    ]:
-                        st.session_state.pop(session_key, None)
-
-                    clear_child_transient_state(
-                        previous_app=st.session_state.get("active_app")
-                    )
-                    st.session_state["active_app"] = None
-                    st.rerun()
-
-            with col_b:
-                st.caption(
-                    "Clear the session before handing the browser to another person."
-                )
-
         return True
 
     st.markdown(
         """
-<div class="ga-api-summary">
-    <div class="ga-api-title">Connect OpenAI to begin</div>
-    <div class="ga-api-desc">
-        Enter your API key and choose the model once. The settings are kept only
-        for this browser session.
+<div class="ga-topbar">
+    <div>
+        <div class="ga-brand-kicker">GenoAnno setup</div>
+        <h1 class="ga-brand-title">Connect OpenAI</h1>
+        <div class="ga-brand-subtitle">
+            Enter your API key and model settings once. They are stored only in
+            the current Streamlit browser session.
+        </div>
     </div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
     )
 
-    with st.expander("OpenAI settings", expanded=True):
+    with st.container(border=True):
         user_key = st.text_input(
             "OpenAI API key",
             type="password",
@@ -685,7 +834,7 @@ def api_key_setup() -> bool:
             )
 
         save_clicked = st.button(
-            "Connect and continue",
+            "Connect and open GenoAnno",
             key="save_user_api_settings",
             use_container_width=True,
         )
@@ -719,8 +868,6 @@ def api_key_setup() -> bool:
 # Page sections
 # ============================================================
 def render_hero(config_ready: bool, child_apps_ready: int) -> None:
-    status_text = "OpenAI ready" if config_ready else "OpenAI setup required"
-
     st.markdown(
         f"""
 <div class="ga-topbar">
@@ -728,12 +875,14 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
         <div class="ga-brand-kicker">Genome annotation interpretation suite</div>
         <h1 class="ga-brand-title">GenoAnno</h1>
         <div class="ga-brand-subtitle">
-            A focused workspace for pathway, protein-family, gene-function,
-            phenotype, and oral-bacteria interpretation.
-            {child_apps_ready}/{len(APP_FILES)} analysis tools detected.
+            AI-assisted interpretation of bacterial pathways, protein families,
+            gene functions, phenotypes, and oral-bacteria similarity.
         </div>
     </div>
-    <div class="ga-status-pill">{status_text}</div>
+    <div class="ga-status-pill">
+        <span class="ga-status-dot"></span>
+        {child_apps_ready}/{len(APP_FILES)} tools ready
+    </div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
@@ -742,42 +891,100 @@ def render_hero(config_ready: bool, child_apps_ready: int) -> None:
 
 def render_left_navigation(active_app: str | None) -> None:
     st.markdown('<div class="ga-nav-shell">', unsafe_allow_html=True)
+
     st.markdown(
-        '<div class="ga-nav-title">Analysis tools</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="ga-nav-subtitle">Select a tool to open it in the workspace.</div>',
+        """
+<div class="ga-nav-brand">
+    <div class="ga-nav-title">Analysis tools</div>
+    <div class="ga-nav-subtitle">Select a module to open it in the workspace.</div>
+</div>
+
+<div class="ga-workflow">
+    <div class="ga-workflow-title">Workflow</div>
+    <div class="ga-workflow-step"><b>1.</b> Select tool</div>
+    <div class="ga-workflow-step"><b>2.</b> Upload annotation</div>
+    <div class="ga-workflow-step"><b>3.</b> Review processed data</div>
+    <div class="ga-workflow-step"><b>4.</b> Generate interpretation</div>
+</div>
+        """.strip(),
         unsafe_allow_html=True,
     )
 
     for app_name in APP_FILES:
+        is_active = active_app == app_name
         label = f"{APP_NUMBERS[app_name]}  {app_name}"
 
         if st.button(
             label,
             key=f"nav_{app_prefix(app_name)}",
             use_container_width=True,
+            type="primary" if is_active else "secondary",
         ):
             switch_active_app(app_name)
             st.rerun()
 
     if active_app is not None:
-        st.markdown('<div class="ga-nav-divider"></div>', unsafe_allow_html=True)
         st.markdown(
             f"""
 <div class="ga-nav-active">
-    <div class="ga-nav-active-label">Current tool</div>
+    <div class="ga-nav-active-label">Current analysis</div>
     <div class="ga-nav-active-title">{active_app}</div>
 </div>
             """.strip(),
             unsafe_allow_html=True,
         )
 
+    st.markdown('<div class="ga-nav-divider"></div>', unsafe_allow_html=True)
+
+    active_model = st.session_state.get("user_selected_model", "gpt-4o-mini")
+    active_temperature = st.session_state.get("user_temperature", 0.5)
+    active_max_tokens = st.session_state.get("user_max_tokens", 2000)
+
+    st.markdown(
+        f"""
+<div class="ga-connection">
+    <div class="ga-connection-row">
+        <span class="ga-connection-dot"></span>
+        <span class="ga-connection-title">OpenAI connected</span>
+    </div>
+    <div class="ga-connection-meta">
+        {active_model}<br>
+        Temperature {active_temperature} · {active_max_tokens} tokens
+    </div>
+</div>
+        """.strip(),
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Settings", expanded=False):
+        st.caption("Connection settings are stored only for this browser session.")
+
+        if st.button(
+            "Clear API settings",
+            key="clear_user_api_settings",
+            use_container_width=True,
+            type="secondary",
+        ):
+            for session_key in [
+                "user_openai_api_key",
+                "user_selected_model",
+                "user_temperature",
+                "user_max_tokens",
+            ]:
+                st.session_state.pop(session_key, None)
+
+            clear_child_transient_state(
+                previous_app=st.session_state.get("active_app")
+            )
+            st.session_state["active_app"] = None
+            st.rerun()
+
+    if active_app is not None:
         if st.button(
             "Close current tool",
             key="nav_close_current",
             use_container_width=True,
+            type="secondary",
         ):
             clear_child_transient_state(previous_app=active_app)
             st.session_state["active_app"] = None
@@ -790,7 +997,7 @@ def render_selected_app_header(app_name: str) -> None:
     st.markdown(
         f"""
 <div class="ga-workspace-head">
-    <div class="ga-workspace-kicker">Active workspace</div>
+    <div class="ga-workspace-kicker">Analysis workspace</div>
     <div class="ga-workspace-title">{app_name}</div>
     <div class="ga-workspace-desc">{APP_DESCRIPTIONS[app_name]}</div>
 </div>
@@ -802,9 +1009,10 @@ def render_selected_app_header(app_name: str) -> None:
 
     with col_clear:
         if st.button(
-            "Clear output",
+            "Clear result",
             key="clear_active_output",
             use_container_width=True,
+            type="secondary",
         ):
             clear_child_transient_state(previous_app=app_name)
             st.rerun()
@@ -847,11 +1055,10 @@ def main() -> None:
             st.markdown(
                 """
 <div class="ga-empty-state">
-    <div class="ga-empty-title">Select an analysis tool</div>
+    <div class="ga-empty-title">Choose an analysis module from the left</div>
     <div class="ga-empty-desc">
-        Choose a tool from the left navigation. The selected analysis will open
-        here, and previous generated output will be cleared automatically when
-        switching tools.
+        The selected tool will open in this workspace. Results and temporary
+        analysis state are isolated between tools to keep each workflow clean.
     </div>
 </div>
                 """.strip(),
