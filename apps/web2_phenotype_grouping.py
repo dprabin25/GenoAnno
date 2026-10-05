@@ -125,30 +125,46 @@ client = OpenAI(api_key=API_KEY)
 
 
 # ============================================================
-# Default editable chunks
+# Exact prompt template
 # ============================================================
-DEFAULT_AI_ROLE = """A Veteran Professor in Biological Science"""
+EXACT_PROMPT_TEMPLATE = """1. AI role
 
-DEFAULT_ANALYSIS = """Using the processed input table, group the retained metabolic pathways into biologically meaningful phenotypes. Interpret only pathways that remain after filtering."""
+You are an expert in oral microbiology, bacterial metabolism, and microbial physiology. Your task is to interpret metabolic pathway information from a bacterial genome and generate evidence-based candidate phenotypes.
 
-DEFAULT_REPORTING = """Generate an output table with the following three columns:
+2. Input description
 
-1. Phenotype
-2. Associated pathways
-3. Explanation describing how the listed pathways support or define the phenotype
+The bacterial genome (an oral bacterium) has been annotated, and genes have been assigned to metabolic pathways. For each pathway, pathway completeness was calculated, or pathway presence was determined. The input table contains two columns:
 
-Finally, provide a brief overall summary describing the predicted phenotype(s) of the bacterium based on these pathway groupings."""
+Column 1: Metabolic pathway — the name of the metabolic pathway.
 
-DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome and assigned each gene to its corresponding metabolic pathway. For each pathway, I calculated its completeness and, where applicable, determined whether the pathway is present (TRUE/FALSE).
+Column 2: Pathway status — either a pathway completeness score or a pathway presence indicator (TRUE/FALSE).
 
-The input table contains two columns after processing:
-Column 1: Metabolic pathway name
-Column 2: Pathway status, either completeness score or status indicator
+The table below has already been processed, and pathways classified as not detected were removed.
 
-Filtering rule:
-Pathways with 0, FALSE, empty, missing, NA, or NaN values are removed before analysis.
+{processed table text}
 
-Only the processed input table should be used for phenotype grouping."""
+3. Analysis instructions
+
+Using only the metabolic pathways provided in the input table:
+
+1. Group related pathways into biologically meaningful candidate phenotype categories.
+2. Explain the biological relationship between the associated pathways and the candidate phenotype.
+3. Consider pathway status when interpreting the strength of the evidence.
+4. Do not use pathways that are absent from the input table.
+5. Do not introduce phenotypes that cannot be reasonably supported by the provided pathway information.
+6. Do not force every pathway into a phenotype category. If a pathway does not provide sufficient information to support a meaningful phenotype, it may be left ungrouped.
+7. Prefer biologically specific phenotype categories over overly broad categories such as “metabolism” or “energy production.”
+
+4. Reporting instructions
+
+Generate a table with the following three columns:
+
+Column 1: Candidate phenotype — Provide a concise description of a potential bacterial characteristic.
+
+Column 2: Associated pathways — List the metabolic pathways supporting the phenotype. If multiple pathways belong to the same phenotype, separate them using semicolons.
+
+Column 3: Evidence-based explanation — Explain how the associated pathways collectively support the candidate phenotype. Do not provide evidence beyond the information available from the input pathways.
+"""
 
 
 # ============================================================
@@ -282,38 +298,20 @@ def dataframe_to_tsv_text(df):
 # ============================================================
 # Build final prompt
 # ============================================================
-def build_prompt(ai_role, input_description, processed_table_text, analysis, reporting):
-    final_prompt = f"""
-1. AI role:
-{ai_role}
-
-2. Input:
-{input_description}
-
-Processed input table after removing pathways with 0, FALSE, empty, missing, NA, or NaN values:
-{processed_table_text}
-
-3. Analysis:
-{analysis}
-
-4. Reporting instructions:
-{reporting}
-""".strip()
-
-    return final_prompt
+def build_prompt(processed_table_text):
+    return EXACT_PROMPT_TEMPLATE.replace(
+        "{processed table text}",
+        processed_table_text.strip(),
+    )
 
 
 # ============================================================
 # OpenAI call
 # ============================================================
-def generate_output(final_prompt, ai_role):
+def generate_output(final_prompt):
     response = client.chat.completions.create(
         model=DEFAULT_MODEL,
         messages=[
-            {
-                "role": "system",
-                "content": ai_role,
-            },
             {
                 "role": "user",
                 "content": final_prompt,
@@ -559,19 +557,12 @@ st.markdown(
 
 
 # ============================================================
-# 1. AI role
+# Exact prompt
 # ============================================================
-st.markdown('<div class="section-title">1. AI role</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Prompt</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Define the biological expertise and reasoning style for phenotype grouping.</div>',
+    '<div class="section-note">The analysis prompt is fixed exactly as specified. The processed pathway table is inserted automatically.</div>',
     unsafe_allow_html=True,
-)
-
-ai_role = st.text_area(
-    "AI role",
-    value=DEFAULT_AI_ROLE,
-    height=110,
-    label_visibility="collapsed",
 )
 
 
@@ -582,13 +573,6 @@ st.markdown('<div class="section-title">2. Input</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="section-note">Upload products.tsv and define how the processed input should be interpreted.</div>',
     unsafe_allow_html=True,
-)
-
-input_description = st.text_area(
-    "Input description",
-    value=DEFAULT_INPUT_DESCRIPTION,
-    height=230,
-    label_visibility="collapsed",
 )
 
 uploaded_tsv = st.file_uploader(
@@ -719,49 +703,11 @@ else:
 
 
 # ============================================================
-# 3. Analysis
-# ============================================================
-st.markdown('<div class="section-title">3. Analysis</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define the biological question for the processed input.</div>',
-    unsafe_allow_html=True,
-)
-
-analysis = st.text_area(
-    "Analysis",
-    value=DEFAULT_ANALYSIS,
-    height=140,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
-# 4. Reporting instructions
-# ============================================================
-st.markdown('<div class="section-title">4. Reporting instructions</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define the expected output structure.</div>',
-    unsafe_allow_html=True,
-)
-
-reporting = st.text_area(
-    "Reporting instructions",
-    value=DEFAULT_REPORTING,
-    height=210,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
 # Final prompt preview and generation
 # ============================================================
 if processed_table_text is not None:
     final_prompt = build_prompt(
-        ai_role=ai_role.strip(),
-        input_description=input_description.strip(),
         processed_table_text=processed_table_text,
-        analysis=analysis.strip(),
-        reporting=reporting.strip(),
     )
 
     with st.expander("Preview final prompt sent to model", expanded=False):
@@ -777,22 +723,13 @@ if processed_table_text is not None:
     generate_button = st.button("Generate phenotype grouping")
 
     if generate_button:
-        if not ai_role.strip():
-            st.warning("Please enter the AI role.")
-        elif not input_description.strip():
-            st.warning("Please enter the input description.")
-        elif processed_df is None or processed_df.empty:
+        if processed_df is None or processed_df.empty:
             st.warning("No pathways remain after filtering. Please check your uploaded TSV file.")
-        elif not analysis.strip():
-            st.warning("Please enter the analysis instructions.")
-        elif not reporting.strip():
-            st.warning("Please enter the reporting instructions.")
         else:
             with st.spinner("Generating phenotype grouping..."):
                 try:
                     output = generate_output(
                         final_prompt=final_prompt,
-                        ai_role=ai_role.strip(),
                     )
 
                     st.session_state["output"] = output
