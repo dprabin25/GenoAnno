@@ -60,6 +60,33 @@ APP_NUMBERS: Dict[str, str] = {
 }
 
 
+APP_GROUPS = [
+    ("Prediction", [
+        "Making Expectation",
+    ]),
+    ("Pathway interpretation", [
+        "Metabolic Pathway Interpreter",
+        "KEGG Pathway Interpreter",
+    ]),
+    ("Gene / protein interpretation", [
+        "Protein Family Interpreter",
+        "Functional Interpreter",
+    ]),
+    ("Comparative analysis", [
+        "Similar Oral Bacteria Interpreter",
+    ]),
+]
+
+APP_SHORT_NAMES: Dict[str, str] = {
+    "Making Expectation": "Making Expectation",
+    "Metabolic Pathway Interpreter": "Metabolic Pathway",
+    "KEGG Pathway Interpreter": "KEGG Pathway",
+    "Protein Family Interpreter": "Protein Family",
+    "Functional Interpreter": "Gene Function",
+    "Similar Oral Bacteria Interpreter": "Similar Oral Bacteria",
+}
+
+
 MODEL_OPTIONS: List[str] = [
     "gpt-4o-mini",
     "gpt-4.1-mini",
@@ -105,22 +132,28 @@ def inject_css() -> None:
         """
 <style>
 :root {
-    --ga-bg: #f4f6f8;
+    --ga-bg: #f5f7fa;
     --ga-surface: #ffffff;
-    --ga-surface-soft: #f8fafc;
+    --ga-surface-2: #f8fafc;
     --ga-text: #0f172a;
     --ga-muted: #64748b;
     --ga-muted-2: #94a3b8;
     --ga-border: #e2e8f0;
     --ga-border-strong: #cbd5e1;
     --ga-primary: #1d4ed8;
-    --ga-primary-dark: #1e3a8a;
+    --ga-primary-700: #1d4ed8;
+    --ga-primary-800: #1e40af;
     --ga-primary-soft: #eff6ff;
-    --ga-accent: #0f766e;
-    --ga-success: #166534;
-    --ga-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.03);
-    --ga-shadow-sm: 0 6px 20px rgba(15, 23, 42, 0.055);
-    --ga-shadow-md: 0 18px 48px rgba(15, 23, 42, 0.075);
+    --ga-accent-soft: #f0fdfa;
+    --ga-success: #15803d;
+    --ga-success-soft: #f0fdf4;
+    --ga-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.025);
+    --ga-shadow-sm: 0 7px 22px rgba(15, 23, 42, 0.05);
+    --ga-shadow-md: 0 18px 48px rgba(15, 23, 42, 0.07);
+}
+
+html {
+    scroll-behavior: smooth;
 }
 
 .stApp {
@@ -129,7 +162,7 @@ def inject_css() -> None:
 }
 
 header[data-testid="stHeader"] {
-    background: rgba(244, 246, 248, 0.97) !important;
+    background: rgba(245, 247, 250, 0.97) !important;
     backdrop-filter: blur(14px) !important;
     border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
     z-index: 999 !important;
@@ -140,53 +173,53 @@ header[data-testid="stHeader"] {
 }
 
 .block-container {
-    max-width: 1500px !important;
-    padding-top: 4.6rem !important;
-    padding-left: 1.3rem !important;
-    padding-right: 1.3rem !important;
+    max-width: 1540px !important;
+    padding-top: 4.55rem !important;
+    padding-left: 1.15rem !important;
+    padding-right: 1.15rem !important;
     padding-bottom: 3rem !important;
 }
 
 /* ============================================================
-   MASTER HEADER
+   TOP APP BAR
    ============================================================ */
 .ga-topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.9rem;
+    padding: 0.95rem 1.15rem;
+    margin-bottom: 0.85rem;
     border: 1px solid var(--ga-border);
-    border-radius: 16px;
+    border-radius: 14px;
     background: var(--ga-surface);
     box-shadow: var(--ga-shadow-xs);
 }
 
 .ga-brand-kicker {
     color: var(--ga-primary);
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin-bottom: 0.18rem;
+    margin-bottom: 0.14rem;
 }
 
 .ga-brand-title {
     margin: 0;
     color: var(--ga-text);
-    font-size: 1.85rem;
+    font-size: 1.78rem;
     line-height: 1.02;
     font-weight: 950;
     letter-spacing: -0.055em;
 }
 
 .ga-brand-subtitle {
-    margin-top: 0.34rem;
+    margin-top: 0.28rem;
     color: var(--ga-muted);
-    font-size: 0.9rem;
-    line-height: 1.45;
-    max-width: 900px;
+    font-size: 0.86rem;
+    line-height: 1.42;
+    max-width: 980px;
 }
 
 .ga-status-pill {
@@ -194,311 +227,317 @@ header[data-testid="stHeader"] {
     display: inline-flex;
     align-items: center;
     gap: 0.38rem;
-    padding: 0.42rem 0.7rem;
+    padding: 0.4rem 0.66rem;
     border-radius: 999px;
     border: 1px solid #bbf7d0;
-    background: #f0fdf4;
-    color: #166534;
-    font-size: 0.76rem;
+    background: var(--ga-success-soft);
+    color: var(--ga-success);
+    font-size: 0.72rem;
     font-weight: 850;
 }
 
 .ga-status-dot {
-    width: 0.48rem;
-    height: 0.48rem;
-    border-radius: 999px;
+    width: 0.43rem;
+    height: 0.43rem;
+    border-radius: 50%;
     background: #22c55e;
 }
 
 /* ============================================================
-   LEFT NAVIGATION RAIL
+   LEFT RAIL
    ============================================================ */
 .ga-nav-shell {
     position: sticky;
-    top: 5.35rem;
-    padding: 0.9rem;
-    border-radius: 16px;
+    top: 5.25rem;
+    padding: 0.78rem;
+    border-radius: 14px;
     background: var(--ga-surface);
     border: 1px solid var(--ga-border);
     box-shadow: var(--ga-shadow-sm);
 }
 
-.ga-nav-brand {
-    padding: 0.15rem 0.15rem 0.75rem 0.15rem;
+.ga-nav-head {
+    padding: 0.1rem 0.12rem 0.55rem 0.12rem;
 }
 
 .ga-nav-title {
     color: var(--ga-text);
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     font-weight: 900;
-    margin-bottom: 0.12rem;
+    margin-bottom: 0.1rem;
 }
 
 .ga-nav-subtitle {
     color: var(--ga-muted);
-    font-size: 0.76rem;
+    font-size: 0.73rem;
     line-height: 1.4;
+}
+
+.ga-nav-group {
+    margin-top: 0.55rem;
+    margin-bottom: 0.2rem;
+    color: var(--ga-muted-2);
+    font-size: 0.63rem;
+    font-weight: 900;
+    letter-spacing: 0.095em;
+    text-transform: uppercase;
 }
 
 .ga-nav-divider {
     height: 1px;
     background: var(--ga-border);
-    margin: 0.7rem 0;
-}
-
-.ga-workflow {
-    padding: 0.72rem 0.75rem;
-    border-radius: 11px;
-    background: var(--ga-surface-soft);
-    border: 1px solid var(--ga-border);
-    margin-bottom: 0.75rem;
-}
-
-.ga-workflow-title {
-    color: var(--ga-text);
-    font-size: 0.72rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0.075em;
-    margin-bottom: 0.45rem;
-}
-
-.ga-workflow-step {
-    color: var(--ga-muted);
-    font-size: 0.72rem;
-    line-height: 1.55;
-}
-
-.ga-workflow-step b {
-    color: var(--ga-text);
-}
-
-.ga-nav-active {
-    margin-top: 0.72rem;
-    padding: 0.72rem 0.8rem;
-    border-radius: 11px;
-    background: var(--ga-primary-soft);
-    border-left: 3px solid var(--ga-primary);
-    border-top: 1px solid #dbeafe;
-    border-right: 1px solid #dbeafe;
-    border-bottom: 1px solid #dbeafe;
-}
-
-.ga-nav-active-label {
-    color: var(--ga-primary);
-    font-size: 0.63rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-}
-
-.ga-nav-active-title {
-    color: var(--ga-text);
-    font-size: 0.82rem;
-    font-weight: 900;
-    margin-top: 0.16rem;
-    line-height: 1.3;
+    margin: 0.68rem 0;
 }
 
 .ga-connection {
-    padding: 0.72rem 0.75rem;
-    border-radius: 11px;
-    background: #f8fafc;
+    padding: 0.7rem 0.72rem;
+    border-radius: 10px;
+    background: var(--ga-surface-2);
     border: 1px solid var(--ga-border);
-    margin-top: 0.72rem;
+    margin-top: 0.65rem;
 }
 
 .ga-connection-row {
     display: flex;
     align-items: center;
-    gap: 0.42rem;
-    margin-bottom: 0.3rem;
+    gap: 0.4rem;
+    margin-bottom: 0.22rem;
 }
 
 .ga-connection-dot {
-    width: 0.46rem;
-    height: 0.46rem;
+    width: 0.42rem;
+    height: 0.42rem;
     border-radius: 50%;
     background: #22c55e;
 }
 
 .ga-connection-title {
     color: var(--ga-text);
-    font-size: 0.73rem;
+    font-size: 0.7rem;
     font-weight: 900;
 }
 
 .ga-connection-meta {
     color: var(--ga-muted);
-    font-size: 0.69rem;
-    line-height: 1.45;
+    font-size: 0.66rem;
+    line-height: 1.42;
 }
 
 /* ============================================================
-   WORKSPACE
+   WORKSPACE HEADER + STATUS
    ============================================================ */
 .ga-workspace-head {
-    padding: 0.95rem 1.1rem;
-    border-radius: 14px;
+    padding: 0.9rem 1rem;
+    border-radius: 13px;
     background: var(--ga-surface);
     border: 1px solid var(--ga-border);
     box-shadow: var(--ga-shadow-xs);
-    margin-bottom: 0.7rem;
+    margin-bottom: 0.6rem;
 }
 
-.ga-workspace-kicker {
-    color: var(--ga-primary);
-    font-size: 0.66rem;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+.ga-workspace-statusline {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--ga-muted);
+    font-size: 0.69rem;
+    font-weight: 750;
+    margin-bottom: 0.22rem;
+}
+
+.ga-workspace-statusline .ga-dot {
+    width: 0.39rem;
+    height: 0.39rem;
+    border-radius: 50%;
+    background: #22c55e;
 }
 
 .ga-workspace-title {
-    margin-top: 0.16rem;
+    margin-top: 0.04rem;
     color: var(--ga-text);
-    font-size: 1.32rem;
+    font-size: 1.3rem;
     font-weight: 950;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.042em;
 }
 
 .ga-workspace-desc {
-    margin-top: 0.22rem;
+    margin-top: 0.18rem;
     color: var(--ga-muted);
-    font-size: 0.86rem;
+    font-size: 0.84rem;
     line-height: 1.48;
 }
 
+/* ============================================================
+   HORIZONTAL WORKFLOW
+   ============================================================ */
+.ga-flow {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0.55rem 0 0.7rem 0;
+}
+
+.ga-flow-step {
+    position: relative;
+    padding: 0.68rem 0.72rem;
+    min-height: 3.25rem;
+    border-radius: 10px;
+    background: var(--ga-surface-2);
+    border: 1px solid var(--ga-border);
+}
+
+.ga-flow-num {
+    color: var(--ga-primary);
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ga-flow-label {
+    margin-top: 0.13rem;
+    color: var(--ga-text);
+    font-size: 0.75rem;
+    font-weight: 850;
+    line-height: 1.28;
+}
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
 .ga-empty-state {
-    padding: 3rem 1.5rem;
+    padding: 3.2rem 1.5rem;
     border: 1px dashed var(--ga-border-strong);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.72);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.74);
     text-align: center;
 }
 
 .ga-empty-title {
     color: var(--ga-text);
     font-weight: 900;
-    font-size: 1.03rem;
+    font-size: 1.02rem;
 }
 
 .ga-empty-desc {
     color: var(--ga-muted);
-    margin-top: 0.28rem;
-    font-size: 0.86rem;
+    margin-top: 0.25rem;
+    font-size: 0.84rem;
     line-height: 1.5;
 }
 
+/* ============================================================
+   CHILD APP WRAPPER
+   ============================================================ */
 .ga-app-frame {
-    padding: 0.8rem;
-    border-radius: 16px;
+    padding: 0.72rem;
+    border-radius: 14px;
     border: 1px solid var(--ga-border);
     background: var(--ga-surface);
     box-shadow: var(--ga-shadow-sm);
 }
 
-/* ============================================================
-   NORMALIZE CHILD APPS
-   ============================================================ */
-
-/* Hide duplicate child hero/header blocks. */
+/* Suppress duplicate child hero/header blocks */
 .main-header {
     display: none !important;
 }
 
-/* Normalize child app page spacing/background. */
-.ga-app-frame .block-container {
-    padding: 0 !important;
-    max-width: 100% !important;
-}
-
+/* Normalize child section hierarchy */
 .ga-app-frame .section-title {
     color: var(--ga-text) !important;
-    font-size: 1.08rem !important;
+    font-size: 1.02rem !important;
     font-weight: 900 !important;
     letter-spacing: -0.025em !important;
-    margin-top: 1.15rem !important;
-    margin-bottom: 0.18rem !important;
+    margin-top: 1rem !important;
+    margin-bottom: 0.14rem !important;
 }
 
 .ga-app-frame .section-note {
     color: var(--ga-muted) !important;
-    font-size: 0.82rem !important;
-    line-height: 1.45 !important;
-    margin-bottom: 0.65rem !important;
+    font-size: 0.78rem !important;
+    line-height: 1.42 !important;
+    margin-bottom: 0.55rem !important;
 }
 
 .ga-app-frame .metric-card {
-    border-radius: 12px !important;
+    border-radius: 10px !important;
     border: 1px solid var(--ga-border) !important;
-    background: var(--ga-surface-soft) !important;
+    background: var(--ga-surface-2) !important;
     box-shadow: none !important;
-    padding: 0.85rem 0.9rem !important;
+    padding: 0.78rem 0.82rem !important;
 }
 
 .ga-app-frame .metric-card .label {
     color: var(--ga-muted) !important;
-    font-size: 0.72rem !important;
+    font-size: 0.68rem !important;
     font-weight: 800 !important;
 }
 
 .ga-app-frame .metric-card .value {
     color: var(--ga-text) !important;
-    font-size: 1.35rem !important;
+    font-size: 1.25rem !important;
     font-weight: 950 !important;
 }
 
-.ga-app-frame .output-panel,
-.ga-app-frame .save-panel {
-    border-radius: 13px !important;
-    border: 1px solid var(--ga-border) !important;
-    background: var(--ga-surface) !important;
+.ga-app-frame .output-panel {
+    border-radius: 12px !important;
+    border: 1px solid #bfdbfe !important;
+    background: #f8fbff !important;
     box-shadow: none !important;
-    padding: 1rem 1.1rem !important;
-}
-
-.ga-app-frame .output-panel h2,
-.ga-app-frame .save-panel h3 {
-    color: var(--ga-text) !important;
-    letter-spacing: -0.03em !important;
+    padding: 1rem 1.05rem !important;
 }
 
 .ga-app-frame .output-panel h2 {
-    font-size: 1.25rem !important;
+    font-size: 1.14rem !important;
+    color: var(--ga-text) !important;
+    letter-spacing: -0.025em !important;
+}
+
+.ga-app-frame .save-panel {
+    border-radius: 12px !important;
+    border: 1px solid var(--ga-border) !important;
+    background: var(--ga-surface-2) !important;
+    box-shadow: none !important;
+    padding: 0.95rem 1rem !important;
 }
 
 .ga-app-frame .save-panel h3 {
-    font-size: 1rem !important;
+    font-size: 0.96rem !important;
+    color: var(--ga-text) !important;
+    letter-spacing: -0.02em !important;
+}
+
+.ga-app-frame .small-muted {
+    color: var(--ga-muted) !important;
+    font-size: 0.76rem !important;
 }
 
 .ga-app-frame .divider {
     background: var(--ga-border) !important;
-    margin: 1.1rem 0 !important;
+    margin: 1rem 0 !important;
 }
 
 /* ============================================================
-   STREAMLIT CONTROLS
+   STREAMLIT COMPONENTS
    ============================================================ */
 .stButton > button,
 .stDownloadButton > button {
-    border-radius: 10px !important;
+    border-radius: 9px !important;
     border: 1px solid transparent !important;
-    background: var(--ga-primary) !important;
+    background: var(--ga-primary-700) !important;
     color: white !important;
     font-weight: 800 !important;
     box-shadow: none !important;
-    min-height: 2.45rem;
+    min-height: 2.35rem;
     transition: background 0.12s ease, border-color 0.12s ease !important;
 }
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
-    background: var(--ga-primary-dark) !important;
-    border-color: var(--ga-primary-dark) !important;
+    background: var(--ga-primary-800) !important;
+    border-color: var(--ga-primary-800) !important;
 }
 
-/* Make secondary Streamlit buttons actually look secondary when type="secondary". */
 button[kind="secondary"],
 button[data-testid="baseButton-secondary"] {
     background: #ffffff !important;
@@ -508,8 +547,8 @@ button[data-testid="baseButton-secondary"] {
 
 button[kind="secondary"]:hover,
 button[data-testid="baseButton-secondary"]:hover {
-    background: var(--ga-surface-soft) !important;
-    color: var(--ga-primary-dark) !important;
+    background: var(--ga-surface-2) !important;
+    color: var(--ga-primary-800) !important;
     border-color: #94a3b8 !important;
 }
 
@@ -518,36 +557,46 @@ div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stSelectbox"] > div > div,
 div[data-testid="stFileUploader"] {
-    border-radius: 10px !important;
+    border-radius: 9px !important;
     border-color: var(--ga-border) !important;
 }
 
 div[data-testid="stFileUploader"] {
-    background: var(--ga-surface-soft) !important;
+    background: var(--ga-surface-2) !important;
 }
 
 div[data-testid="stExpander"] {
     border: 1px solid var(--ga-border) !important;
-    border-radius: 11px !important;
+    border-radius: 10px !important;
     background: var(--ga-surface) !important;
     box-shadow: none !important;
 }
 
-/* Cleaner dataframes */
 div[data-testid="stDataFrame"] {
     border: 1px solid var(--ga-border) !important;
-    border-radius: 11px !important;
+    border-radius: 10px !important;
     overflow: hidden !important;
 }
 
-/* Reduce excessive markdown spacing inside child apps */
 .ga-app-frame div[data-testid="stMarkdownContainer"] p {
-    line-height: 1.55;
+    line-height: 1.52;
+}
+
+/* Make labels more compact */
+label[data-testid="stWidgetLabel"] p {
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
 }
 
 /* ============================================================
    RESPONSIVE
    ============================================================ */
+@media (max-width: 1050px) {
+    .ga-flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 980px) {
     .ga-topbar {
         display: block;
@@ -555,18 +604,24 @@ div[data-testid="stDataFrame"] {
 
     .ga-status-pill {
         display: inline-flex;
-        margin-top: 0.75rem;
+        margin-top: 0.7rem;
     }
 
     .block-container {
-        padding-top: 4.4rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
+        padding-top: 4.35rem !important;
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
     }
 
     .ga-nav-shell {
         position: relative;
         top: auto;
+    }
+}
+
+@media (max-width: 680px) {
+    .ga-flow {
+        grid-template-columns: 1fr;
     }
 }
 </style>
@@ -867,6 +922,43 @@ def api_key_setup() -> bool:
 # ============================================================
 # Page sections
 # ============================================================
+def workflow_for_app(app_name: str) -> list[str]:
+    if app_name == "Making Expectation":
+        return [
+            "Select tool",
+            "Provide bacterial behavior and pathway information",
+            "Review provided inputs",
+            "Generate pathway expectations",
+        ]
+
+    return [
+        "Select tool",
+        "Upload annotation",
+        "Review processed data",
+        "Generate interpretation",
+    ]
+
+
+def render_workflow(app_name: str) -> None:
+    steps = workflow_for_app(app_name)
+
+    cards = []
+    for idx, label in enumerate(steps, start=1):
+        cards.append(
+            f"""
+<div class="ga-flow-step">
+    <div class="ga-flow-num">Step {idx}</div>
+    <div class="ga-flow-label">{label}</div>
+</div>
+            """.strip()
+        )
+
+    st.markdown(
+        '<div class="ga-flow">' + "".join(cards) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_hero(config_ready: bool, child_apps_ready: int) -> None:
     st.markdown(
         f"""
@@ -894,45 +986,32 @@ def render_left_navigation(active_app: str | None) -> None:
 
     st.markdown(
         """
-<div class="ga-nav-brand">
-    <div class="ga-nav-title">Analysis tools</div>
-    <div class="ga-nav-subtitle">Select a module to open it in the workspace.</div>
-</div>
-
-<div class="ga-workflow">
-    <div class="ga-workflow-title">Workflow</div>
-    <div class="ga-workflow-step"><b>1.</b> Select tool</div>
-    <div class="ga-workflow-step"><b>2.</b> Upload annotation</div>
-    <div class="ga-workflow-step"><b>3.</b> Review processed data</div>
-    <div class="ga-workflow-step"><b>4.</b> Generate interpretation</div>
+<div class="ga-nav-head">
+    <div class="ga-nav-title">Analysis modules</div>
+    <div class="ga-nav-subtitle">Choose a module to open it in the workspace.</div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
     )
 
-    for app_name in APP_FILES:
-        is_active = active_app == app_name
-        label = f"{APP_NUMBERS[app_name]}  {app_name}"
-
-        if st.button(
-            label,
-            key=f"nav_{app_prefix(app_name)}",
-            use_container_width=True,
-            type="primary" if is_active else "secondary",
-        ):
-            switch_active_app(app_name)
-            st.rerun()
-
-    if active_app is not None:
+    for group_name, app_names in APP_GROUPS:
         st.markdown(
-            f"""
-<div class="ga-nav-active">
-    <div class="ga-nav-active-label">Current analysis</div>
-    <div class="ga-nav-active-title">{active_app}</div>
-</div>
-            """.strip(),
+            f'<div class="ga-nav-group">{group_name}</div>',
             unsafe_allow_html=True,
         )
+
+        for app_name in app_names:
+            is_active = active_app == app_name
+            label = f"{APP_NUMBERS[app_name]}  {APP_SHORT_NAMES[app_name]}"
+
+            if st.button(
+                label,
+                key=f"nav_{app_prefix(app_name)}",
+                use_container_width=True,
+                type="primary" if is_active else "secondary",
+            ):
+                switch_active_app(app_name)
+                st.rerun()
 
     st.markdown('<div class="ga-nav-divider"></div>', unsafe_allow_html=True)
 
@@ -949,7 +1028,7 @@ def render_left_navigation(active_app: str | None) -> None:
     </div>
     <div class="ga-connection-meta">
         {active_model}<br>
-        Temperature {active_temperature} · {active_max_tokens} tokens
+        T={active_temperature} · {active_max_tokens} tokens
     </div>
 </div>
         """.strip(),
@@ -957,7 +1036,7 @@ def render_left_navigation(active_app: str | None) -> None:
     )
 
     with st.expander("Settings", expanded=False):
-        st.caption("Connection settings are stored only for this browser session.")
+        st.caption("Stored only for this browser session.")
 
         if st.button(
             "Clear API settings",
@@ -997,13 +1076,18 @@ def render_selected_app_header(app_name: str) -> None:
     st.markdown(
         f"""
 <div class="ga-workspace-head">
-    <div class="ga-workspace-kicker">Analysis workspace</div>
+    <div class="ga-workspace-statusline">
+        <span class="ga-dot"></span>
+        Tool {APP_NUMBERS[app_name]} · Ready
+    </div>
     <div class="ga-workspace-title">{app_name}</div>
     <div class="ga-workspace-desc">{APP_DESCRIPTIONS[app_name]}</div>
 </div>
         """.strip(),
         unsafe_allow_html=True,
     )
+
+    render_workflow(app_name)
 
     col_clear, col_space = st.columns([1, 5])
 
@@ -1055,10 +1139,10 @@ def main() -> None:
             st.markdown(
                 """
 <div class="ga-empty-state">
-    <div class="ga-empty-title">Choose an analysis module from the left</div>
+    <div class="ga-empty-title">Select a module from the left navigation</div>
     <div class="ga-empty-desc">
-        The selected tool will open in this workspace. Results and temporary
-        analysis state are isolated between tools to keep each workflow clean.
+        GenoAnno will open the selected workflow here. Each module keeps its
+        analysis state isolated so results do not carry into another tool.
     </div>
 </div>
                 """.strip(),
