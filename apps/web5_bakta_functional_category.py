@@ -148,36 +148,48 @@ client = OpenAI(api_key=API_KEY)
 
 
 # ============================================================
-# Defaults
+# Exact gene-function interpretation prompt
 # ============================================================
-DEFAULT_AI_ROLE = """A Veteran Professor in Biological Science"""
+EXACT_PROMPT_TEMPLATE = """Prompt for gene function interpretation
 
-DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome using Bakta. The uploaded Bakta TSV contains gene-level annotations. I selected the Product column and counted how many genes map to each repeated product/function term.
+1. AI role
 
-The processed input table contains two columns:
-Column 1: Functional category
-Column 2: Gene count
+You are an expert in oral microbiology, bacterial genes, and microbial physiology. Your task is to interpret gene function information from a bacterial genome and generate evidence-based candidate phenotypes.
 
-Only the processed functional category count table should be used for phenotype grouping."""
+2. Input description
 
-DEFAULT_ANALYSIS = """Using the processed Bakta functional category count table, group the functional categories into biologically meaningful phenotypes. Give more weight to functional categories with higher gene counts, but do not overclaim phenotype prediction from count alone."""
+The bacterial genome (an oral bacterium) has been annotated, and molecular function has been described for each gene. The input table contains two columns:
 
-DEFAULT_REPORTING = """Generate an output table with the following three columns:
+Column 1: Functional category — the name of the gene function.
 
-1. Phenotype
-2. Associated functional categories supporting phenotypes
-3. Explanation describing how the listed functional categories support or define the phenotype
+Column 2: Gene count — the number of genes within the functional category.
 
-Formatting rules:
-- Use a clean markdown table.
-- Do not use HTML tags.
-- Do not use <br>, <br/>, or <br />.
-- If multiple functional categories belong to the same phenotype, separate them using semicolons.
-- Keep each table cell readable and concise.
-- Do not invent biological functions that are not supported by the functional category names.
-- If a functional category is poorly characterized or unknown, describe the interpretation as uncertain.
+The table below has already been processed, and generic or uninformative categories were removed. The table contains top 40 most abundant categories
 
-Finally, provide a brief overall summary describing the predicted phenotype(s) of the bacterium based on these functional category groupings."""
+{processed table text}
+
+3. Analysis instructions
+
+Using only the gene functions provided in the input table:
+
+1. Group related functional categories into biologically meaningful candidate phenotype categories.
+2. Explain the biological relationship between the associated functional categories and the candidate phenotype.
+3. Give more weight to functional categories with higher gene counts, but do not overclaim phenotype prediction from count alone.
+4. Do not use functional categories that are absent from the input table as evidence.
+5. Do not introduce phenotypes that cannot be reasonably supported by the provided gene function information.
+6. Do not force every gene function into a phenotype category. If a gene function does not provide sufficient information to support a meaningful phenotype, it may be left ungrouped.
+7. Prefer biologically specific phenotype categories over overly broad categories such as “metabolism” or “energy production.”
+
+4. Reporting instructions
+
+Generate a table with the following three columns:
+
+Column 1: Candidate phenotype — Provide a concise description of a potential bacterial characteristic.
+
+Column 2: Associated functional categories — List the functional categories supporting the phenotype. If multiple categories belong to the same phenotype, separate them using semicolons.
+
+Column 3: Evidence-based explanation — Explain how the associated categories collectively support the candidate phenotype. Do not provide evidence beyond the information available from the input functional categories.
+"""
 
 
 # ============================================================
@@ -360,6 +372,21 @@ def get_top_n_with_ties(count_df, n=10):
     return top_df
 
 
+
+def get_top_40(count_df):
+    if count_df.empty:
+        return pd.DataFrame(columns=["Functional category", "Gene count"])
+
+    top40_df = count_df.sort_values(
+        by=["Gene count", "Functional category"],
+        ascending=[False, True],
+    ).head(40).reset_index(drop=True)
+
+    top40_df.index = top40_df.index + 1
+
+    return top40_df
+
+
 def dataframe_to_tsv_text(df):
     if df.empty:
         return "No functional categories remained after processing."
@@ -367,53 +394,17 @@ def dataframe_to_tsv_text(df):
     return df.to_csv(sep="\t", index=False)
 
 
-def build_prompt(
-    ai_role,
-    input_description,
-    processed_table_text,
-    top10_table_text,
-    include_top10,
-    analysis,
-    reporting,
-):
-    if include_top10:
-        top10_section = f"""
-Top 10 functional category count table, including all functional categories tied at the 10th position:
-{top10_table_text}
-""".strip()
-    else:
-        top10_section = "Top 10 functional category count table was not requested."
-
-    final_prompt = f"""
-1. AI role:
-{ai_role}
-
-2. Input:
-{input_description}
-
-Processed functional category count table:
-{processed_table_text}
-
-{top10_section}
-
-3. Analysis:
-{analysis}
-
-4. Reporting instructions:
-{reporting}
-""".strip()
-
-    return final_prompt
+def build_prompt(processed_table_text):
+    return EXACT_PROMPT_TEMPLATE.replace(
+        "{processed table text}",
+        processed_table_text.strip(),
+    )
 
 
-def generate_output(final_prompt, ai_role):
+def generate_output(final_prompt):
     response = client.chat.completions.create(
         model=DEFAULT_MODEL,
         messages=[
-            {
-                "role": "system",
-                "content": ai_role,
-            },
             {
                 "role": "user",
                 "content": final_prompt,
@@ -611,19 +602,12 @@ st.markdown(
 
 
 # ============================================================
-# 1. AI role
+# Fixed prompt
 # ============================================================
-st.markdown('<div class="section-title">1. AI role</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Prompt</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-note">Define the biological expertise and reasoning style.</div>',
+    '<div class="section-note">The gene-function interpretation prompt is fixed exactly as specified. The top 40 most abundant processed functional categories are inserted automatically.</div>',
     unsafe_allow_html=True,
-)
-
-ai_role = st.text_area(
-    "AI role",
-    value=DEFAULT_AI_ROLE,
-    height=110,
-    label_visibility="collapsed",
 )
 
 
@@ -636,25 +620,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-input_description = st.text_area(
-    "Input description",
-    value=DEFAULT_INPUT_DESCRIPTION,
-    height=190,
-    label_visibility="collapsed",
-)
-
 uploaded_file = st.file_uploader(
     "Upload Bakta TSV file",
     type=["tsv", "txt", "csv"],
 )
 
 count_df = None
-top10_df = None
+top40_df = None
 raw_df = None
 removed_df = None
 processed_table_text = None
-top10_table_text = None
-include_top10 = True
 
 if uploaded_file is not None:
     try:
@@ -771,34 +746,25 @@ if uploaded_file is not None:
             height=420,
         )
 
-        include_top10 = st.checkbox(
-            "Generate top 10 count table",
-            value=True,
+        top40_df = get_top_40(count_df)
+
+        st.markdown(
+            '<div class="section-title">2d. Top 40 functional categories used for AI analysis</div>',
+            unsafe_allow_html=True,
         )
 
-        if include_top10:
-            top10_df = get_top_n_with_ties(count_df, n=10)
+        st.markdown(
+            '<div class="section-note">These are the 40 most abundant retained functional categories and are the only categories inserted into the interpretation prompt.</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.markdown(
-                '<div class="section-title">2d. Top 10 functional category count table</div>',
-                unsafe_allow_html=True,
-            )
+        st.dataframe(
+            top40_df,
+            use_container_width=True,
+            height=500,
+        )
 
-            st.markdown(
-                '<div class="section-note">Includes the top 10 count level and all categories tied at the 10th position.</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.dataframe(
-                top10_df,
-                use_container_width=True,
-                height=380,
-            )
-        else:
-            top10_df = pd.DataFrame(columns=["Functional category", "Gene count"])
-
-        processed_table_text = dataframe_to_tsv_text(count_df)
-        top10_table_text = dataframe_to_tsv_text(top10_df)
+        processed_table_text = dataframe_to_tsv_text(top40_df)
 
     except Exception as upload_error:
         st.error(f"Could not process uploaded file:\n\n{upload_error}")
@@ -808,51 +774,11 @@ else:
 
 
 # ============================================================
-# 3. Analysis
-# ============================================================
-st.markdown('<div class="section-title">3. Analysis</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define how the functional category count table should be interpreted.</div>',
-    unsafe_allow_html=True,
-)
-
-analysis = st.text_area(
-    "Analysis",
-    value=DEFAULT_ANALYSIS,
-    height=140,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
-# 4. Reporting instructions
-# ============================================================
-st.markdown('<div class="section-title">4. Reporting instructions</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-note">Define the expected output structure.</div>',
-    unsafe_allow_html=True,
-)
-
-reporting = st.text_area(
-    "Reporting instructions",
-    value=DEFAULT_REPORTING,
-    height=260,
-    label_visibility="collapsed",
-)
-
-
-# ============================================================
 # Generate
 # ============================================================
 if processed_table_text is not None:
     final_prompt = build_prompt(
-        ai_role=ai_role.strip(),
-        input_description=input_description.strip(),
         processed_table_text=processed_table_text,
-        top10_table_text=top10_table_text,
-        include_top10=include_top10,
-        analysis=analysis.strip(),
-        reporting=reporting.strip(),
     )
 
     with st.expander("Preview final prompt sent to model", expanded=False):
@@ -868,22 +794,13 @@ if processed_table_text is not None:
     generate_button = st.button("Generate phenotype grouping")
 
     if generate_button:
-        if not ai_role.strip():
-            st.warning("Please enter the AI role.")
-        elif not input_description.strip():
-            st.warning("Please enter the input description.")
-        elif count_df is None or count_df.empty:
+        if count_df is None or count_df.empty:
             st.warning("No functional category terms were found. Please check the selected column.")
-        elif not analysis.strip():
-            st.warning("Please enter the analysis instructions.")
-        elif not reporting.strip():
-            st.warning("Please enter the reporting instructions.")
         else:
             with st.spinner("Generating phenotype grouping..."):
                 try:
                     output = generate_output(
                         final_prompt=final_prompt,
-                        ai_role=ai_role.strip(),
                     )
 
                     output = clean_model_output(output)
@@ -954,7 +871,7 @@ if count_df is not None and not count_df.empty:
     )
 
     st.markdown(
-        '<div class="section-note">Optional: save the full count table and top 10 table as TXT files.</div>',
+        '<div class="section-note">Optional: save the full count table and the top 40 table as TXT files.</div>',
         unsafe_allow_html=True,
     )
 
@@ -967,9 +884,9 @@ if count_df is not None and not count_df.empty:
         )
 
     with save_col2:
-        top10_file_name = st.text_input(
-            "Top 10 table file name",
-            value="bakta_functional_category_top10_with_ties_table",
+        top40_file_name = st.text_input(
+            "Top 40 table file name",
+            value="bakta_functional_category_top40_table",
         )
 
     processed_output_directory = st.text_input(
@@ -985,17 +902,17 @@ if count_df is not None and not count_df.empty:
             output_dir.mkdir(parents=True, exist_ok=True)
 
             safe_full_count_name = clean_filename(full_count_file_name)
-            safe_top10_name = clean_filename(top10_file_name)
+            safe_top40_name = clean_filename(top40_file_name)
 
             count_table_path = output_dir / f"{safe_full_count_name}.txt"
             count_df.to_csv(count_table_path, sep="\t", index=False)
 
-            if top10_df is not None and not top10_df.empty:
-                top10_table_path = output_dir / f"{safe_top10_name}.txt"
-                top10_df.to_csv(top10_table_path, sep="\t", index=False)
+            if top40_df is not None and not top40_df.empty:
+                top40_table_path = output_dir / f"{safe_top40_name}.txt"
+                top40_df.to_csv(top40_table_path, sep="\t", index=False)
 
                 st.success(
-                    f"Saved successfully:\n\n{count_table_path}\n\n{top10_table_path}"
+                    f"Saved successfully:\n\n{count_table_path}\n\n{top40_table_path}"
                 )
             else:
                 st.success(f"Saved successfully:\n\n{count_table_path}")
