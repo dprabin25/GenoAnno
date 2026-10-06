@@ -1180,22 +1180,6 @@ def render_selected_app_header(app_name: str) -> None:
 
     render_workflow(app_name)
 
-    col_clear, col_space = st.columns([1, 5])
-
-    with col_clear:
-        if st.button(
-            "Reset",
-            key="reset_active_tool",
-            use_container_width=True,
-            type="secondary",
-            help=(
-                "Reset the current tool to its original state. "
-                "Uploaded files, generated outputs, and tool-specific temporary "
-                "inputs are cleared. OpenAI settings are preserved."
-            ),
-        ):
-            clear_child_transient_state(previous_app=app_name)
-            st.rerun()
 
 
 def main() -> None:
