@@ -541,6 +541,28 @@ st.markdown(
         font-size: 1.7rem;
         font-weight: 850;
     }
+
+    .stDownloadButton > button {
+        background: #111827;
+        color: #ffffff;
+        border: 1px solid #111827;
+        border-radius: 12px;
+        padding: 0.75rem 1.35rem;
+        font-size: 0.98rem;
+        font-weight: 800;
+        box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
+        transition: all 0.15s ease-in-out;
+        margin-top: 0.55rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .stDownloadButton > button:hover {
+        background: #374151;
+        border-color: #374151;
+        color: #ffffff;
+        transform: translateY(-1px);
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -693,6 +715,19 @@ if uploaded_tsv is not None:
             height=420,
         )
 
+        processed_download_text = processed_df.to_csv(
+            sep="\t",
+            index=False,
+        )
+
+        st.download_button(
+            label="Download processed metabolic pathway table",
+            data=processed_download_text,
+            file_name="processed_metabolic_pathways.tsv",
+            mime="text/tab-separated-values",
+            use_container_width=False,
+        )
+
         processed_table_text = dataframe_to_tsv_text(processed_df)
 
     except Exception as upload_error:
@@ -739,7 +774,7 @@ if processed_table_text is not None:
 
 
 # ============================================================
-# Output and save
+# Output
 # ============================================================
 if "output" in st.session_state:
     output = st.session_state["output"]
@@ -749,41 +784,11 @@ if "output" in st.session_state:
     st.markdown(output)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div class="save-panel">
-            <h3>Save output as TXT</h3>
-            <p class="small-muted">
-                Choose the file name and local directory where the text output should be saved.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.download_button(
+        label="Download AI interpretation",
+        data=output,
+        file_name="metabolic_pathway_interpretation.txt",
+        mime="text/plain",
+        use_container_width=False,
     )
 
-    col1, col2 = st.columns(2, gap="large")
-
-    with col1:
-        output_file_name = st.text_input(
-            "Output file name",
-            value="phenotype_grouping_output",
-        )
-
-    with col2:
-        output_directory = st.text_input(
-            "Output directory",
-            value=str(HERE),
-        )
-
-    safe_file_name = clean_filename(output_file_name)
-    output_path = Path(output_directory) / f"{safe_file_name}.txt"
-
-    if st.button("Save TXT to selected directory"):
-        try:
-            Path(output_directory).mkdir(parents=True, exist_ok=True)
-            output_path.write_text(output, encoding="utf-8")
-
-            st.success(f"Saved successfully:\n\n{output_path}")
-
-        except Exception as save_error:
-            st.error(f"Could not save file:\n\n{save_error}")
