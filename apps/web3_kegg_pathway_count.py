@@ -553,6 +553,28 @@ st.markdown(
         font-size: 1.7rem;
         font-weight: 850;
     }
+
+    .stDownloadButton > button {
+        background: #111827;
+        color: #ffffff;
+        border: 1px solid #111827;
+        border-radius: 12px;
+        padding: 0.75rem 1.35rem;
+        font-size: 0.98rem;
+        font-weight: 800;
+        box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
+        transition: all 0.15s ease-in-out;
+        margin-top: 0.55rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .stDownloadButton > button:hover {
+        background: #374151;
+        border-color: #374151;
+        color: #ffffff;
+        transform: translateY(-1px);
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -709,6 +731,19 @@ if uploaded_file is not None:
                 use_container_width=True,
                 height=380,
             )
+
+            top10_download_text = top10_df.to_csv(
+                sep="\t",
+                index=False,
+            )
+
+            st.download_button(
+                label="Download Top 10 KEGG table",
+                data=top10_download_text,
+                file_name="kegg_top10_with_ties_table.tsv",
+                mime="text/tab-separated-values",
+                use_container_width=False,
+            )
         else:
             top10_df = pd.DataFrame(columns=["KEGG pathways", "Gene count"])
 
@@ -761,7 +796,7 @@ if processed_table_text is not None:
 
 
 # ============================================================
-# Output and save GPT result as TXT
+# Output
 # ============================================================
 if "output" in st.session_state:
     output = st.session_state["output"]
@@ -771,101 +806,10 @@ if "output" in st.session_state:
     st.markdown(output)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div class="save-panel">
-            <h3>Save output as TXT</h3>
-            <p class="small-muted">
-                Choose the file name and local directory where the text output should be saved.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.download_button(
+        label="Download AI interpretation",
+        data=output,
+        file_name="kegg_pathway_interpretation.txt",
+        mime="text/plain",
+        use_container_width=False,
     )
-
-    col1, col2 = st.columns(2, gap="large")
-
-    with col1:
-        output_file_name = st.text_input(
-            "Output file name",
-            value="kegg_pathway_count_phenotype_output",
-        )
-
-    with col2:
-        output_directory = st.text_input(
-            "Output directory",
-            value=str(HERE),
-        )
-
-    safe_file_name = clean_filename(output_file_name)
-    output_path = Path(output_directory) / f"{safe_file_name}.txt"
-
-    if st.button("Save TXT to selected directory"):
-        try:
-            Path(output_directory).mkdir(parents=True, exist_ok=True)
-            output_path.write_text(output, encoding="utf-8")
-
-            st.success(f"Saved successfully:\n\n{output_path}")
-
-        except Exception as save_error:
-            st.error(f"Could not save file:\n\n{save_error}")
-
-
-# ============================================================
-# Optional save processed tables as TXT
-# ============================================================
-if count_df is not None and not count_df.empty:
-    st.markdown(
-        '<div class="section-title">Save processed KEGG tables</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="section-note">Optional: choose file names and save the full KEGG count table and top 10 table as TXT files.</div>',
-        unsafe_allow_html=True,
-    )
-
-    save_col1, save_col2 = st.columns(2, gap="large")
-
-    with save_col1:
-        full_count_file_name = st.text_input(
-            "Full KEGG count table file name",
-            value="kegg_pathway_count_table",
-        )
-
-    with save_col2:
-        top10_file_name = st.text_input(
-            "Top 10 KEGG table file name",
-            value="kegg_top10_with_ties_table",
-        )
-
-    processed_output_directory = st.text_input(
-        "Directory for processed KEGG tables",
-        value=str(HERE),
-    )
-
-    save_tables_button = st.button("Save processed KEGG tables as TXT")
-
-    if save_tables_button:
-        try:
-            output_dir = Path(processed_output_directory)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            safe_full_count_name = clean_filename(full_count_file_name)
-            safe_top10_name = clean_filename(top10_file_name)
-
-            count_table_path = output_dir / f"{safe_full_count_name}.txt"
-            count_df.to_csv(count_table_path, sep="\t", index=False)
-
-            if top10_df is not None and not top10_df.empty:
-                top10_table_path = output_dir / f"{safe_top10_name}.txt"
-                top10_df.to_csv(top10_table_path, sep="\t", index=False)
-
-                st.success(
-                    f"Saved successfully:\n\n{count_table_path}\n\n{top10_table_path}"
-                )
-            else:
-                st.success(f"Saved successfully:\n\n{count_table_path}")
-
-        except Exception as table_save_error:
-            st.error(f"Could not save processed tables:\n\n{table_save_error}")
