@@ -132,21 +132,34 @@ def inject_css() -> None:
         """
 <style>
 :root {
-    --ga-bg: #f5f7fa;
+    --ga-bg: #f6f8fb;
     --ga-surface: #ffffff;
-    --ga-surface-2: #f8fafc;
-    --ga-text: #0f172a;
-    --ga-muted: #64748b;
+    --ga-surface-2: #f9fbfd;
+    --ga-text: #102033;
+    --ga-muted: #617083;
     --ga-muted-2: #94a3b8;
-    --ga-border: #e2e8f0;
-    --ga-border-strong: #cbd5e1;
-    --ga-primary: #1d4ed8;
-    --ga-primary-700: #1d4ed8;
-    --ga-primary-800: #1e40af;
-    --ga-primary-soft: #eff6ff;
-    --ga-accent-soft: #f0fdfa;
-    --ga-success: #15803d;
-    --ga-success-soft: #f0fdf4;
+    --ga-border: #dfe6ee;
+    --ga-border-strong: #c9d3df;
+
+    /* Core scientific palette */
+    --ga-navy: #15345b;
+    --ga-navy-deep: #0f2744;
+    --ga-teal: #147d78;
+    --ga-teal-deep: #0f625e;
+
+    /* Premium accent: used sparingly */
+    --ga-gold: #b58a2a;
+    --ga-gold-deep: #8f6b1f;
+    --ga-gold-soft: #fbf7ea;
+
+    --ga-primary: var(--ga-navy);
+    --ga-primary-700: var(--ga-navy);
+    --ga-primary-800: var(--ga-navy-deep);
+    --ga-primary-soft: #eef4fa;
+    --ga-accent-soft: #eef9f7;
+
+    --ga-success: #16735d;
+    --ga-success-soft: #effaf6;
     --ga-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.025);
     --ga-shadow-sm: 0 7px 22px rgba(15, 23, 42, 0.05);
     --ga-shadow-md: 0 18px 48px rgba(15, 23, 42, 0.07);
@@ -162,7 +175,7 @@ html {
 }
 
 header[data-testid="stHeader"] {
-    background: rgba(245, 247, 250, 0.97) !important;
+    background: rgba(246, 248, 251, 0.97) !important;
     backdrop-filter: blur(14px) !important;
     border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
     z-index: 999 !important;
@@ -184,6 +197,8 @@ header[data-testid="stHeader"] {
    TOP APP BAR
    ============================================================ */
 .ga-topbar {
+    position: relative;
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -196,8 +211,23 @@ header[data-testid="stHeader"] {
     box-shadow: var(--ga-shadow-xs);
 }
 
+.ga-topbar::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(
+        180deg,
+        var(--ga-navy) 0%,
+        var(--ga-teal) 58%,
+        var(--ga-gold) 100%
+    );
+}
+
 .ga-brand-kicker {
-    color: var(--ga-primary);
+    color: var(--ga-gold-deep);
     font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.12em;
@@ -229,7 +259,7 @@ header[data-testid="stHeader"] {
     gap: 0.38rem;
     padding: 0.4rem 0.66rem;
     border-radius: 999px;
-    border: 1px solid #bbf7d0;
+    border: 1px solid #cbe8df;
     background: var(--ga-success-soft);
     color: var(--ga-success);
     font-size: 0.72rem;
@@ -240,7 +270,7 @@ header[data-testid="stHeader"] {
     width: 0.43rem;
     height: 0.43rem;
     border-radius: 50%;
-    background: #22c55e;
+    background: var(--ga-teal);
 }
 
 /* ============================================================
@@ -253,6 +283,7 @@ header[data-testid="stHeader"] {
     border-radius: 14px;
     background: var(--ga-surface);
     border: 1px solid var(--ga-border);
+    border-top: 3px solid var(--ga-gold);
     box-shadow: var(--ga-shadow-sm);
 }
 
@@ -274,9 +305,9 @@ header[data-testid="stHeader"] {
 }
 
 .ga-nav-group {
-    margin-top: 0.55rem;
-    margin-bottom: 0.2rem;
-    color: var(--ga-muted-2);
+    margin-top: 0.65rem;
+    margin-bottom: 0.22rem;
+    color: var(--ga-gold-deep);
     font-size: 0.63rem;
     font-weight: 900;
     letter-spacing: 0.095em;
@@ -292,7 +323,7 @@ header[data-testid="stHeader"] {
 .ga-connection {
     padding: 0.7rem 0.72rem;
     border-radius: 10px;
-    background: var(--ga-surface-2);
+    background: linear-gradient(135deg, #f7fbfa 0%, #fbfaf5 100%);
     border: 1px solid var(--ga-border);
     margin-top: 0.65rem;
 }
@@ -308,7 +339,7 @@ header[data-testid="stHeader"] {
     width: 0.42rem;
     height: 0.42rem;
     border-radius: 50%;
-    background: #22c55e;
+    background: var(--ga-teal);
 }
 
 .ga-connection-title {
@@ -327,12 +358,31 @@ header[data-testid="stHeader"] {
    WORKSPACE HEADER + STATUS
    ============================================================ */
 .ga-workspace-head {
-    padding: 0.9rem 1rem;
+    position: relative;
+    overflow: hidden;
+    padding: 0.9rem 1rem 0.9rem 1.08rem;
     border-radius: 13px;
-    background: var(--ga-surface);
+    background:
+        linear-gradient(135deg, rgba(21, 52, 91, 0.025), rgba(20, 125, 120, 0.035)),
+        var(--ga-surface);
     border: 1px solid var(--ga-border);
     box-shadow: var(--ga-shadow-xs);
     margin-bottom: 0.6rem;
+}
+
+.ga-workspace-head::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(
+        180deg,
+        var(--ga-navy) 0%,
+        var(--ga-teal) 65%,
+        var(--ga-gold) 100%
+    );
 }
 
 .ga-workspace-statusline {
@@ -349,7 +399,7 @@ header[data-testid="stHeader"] {
     width: 0.39rem;
     height: 0.39rem;
     border-radius: 50%;
-    background: #22c55e;
+    background: var(--ga-teal);
 }
 
 .ga-workspace-title {
@@ -387,7 +437,7 @@ header[data-testid="stHeader"] {
 }
 
 .ga-flow-num {
-    color: var(--ga-primary);
+    color: var(--ga-gold-deep);
     font-size: 0.62rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -481,8 +531,9 @@ header[data-testid="stHeader"] {
 
 .ga-app-frame .output-panel {
     border-radius: 12px !important;
-    border: 1px solid #bfdbfe !important;
-    background: #f8fbff !important;
+    border: 1px solid #d4dfeb !important;
+    border-top: 3px solid var(--ga-gold) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%) !important;
     box-shadow: none !important;
     padding: 1rem 1.05rem !important;
 }
@@ -524,7 +575,7 @@ header[data-testid="stHeader"] {
 .stDownloadButton > button {
     border-radius: 9px !important;
     border: 1px solid transparent !important;
-    background: var(--ga-primary-700) !important;
+    background: linear-gradient(135deg, var(--ga-navy), var(--ga-teal-deep)) !important;
     color: white !important;
     font-weight: 800 !important;
     box-shadow: none !important;
@@ -534,8 +585,21 @@ header[data-testid="stHeader"] {
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
-    background: var(--ga-primary-800) !important;
-    border-color: var(--ga-primary-800) !important;
+    background: linear-gradient(135deg, var(--ga-navy-deep), var(--ga-teal-deep)) !important;
+    border-color: var(--ga-navy-deep) !important;
+}
+
+button[kind="primary"],
+button[data-testid="baseButton-primary"] {
+    background: linear-gradient(135deg, var(--ga-navy), var(--ga-teal-deep)) !important;
+    color: #ffffff !important;
+    border: 1px solid transparent !important;
+    box-shadow: 0 5px 14px rgba(21, 52, 91, 0.13) !important;
+}
+
+button[kind="primary"]:hover,
+button[data-testid="baseButton-primary"]:hover {
+    background: linear-gradient(135deg, var(--ga-navy-deep), var(--ga-teal-deep)) !important;
 }
 
 button[kind="secondary"],
@@ -548,7 +612,7 @@ button[data-testid="baseButton-secondary"] {
 button[kind="secondary"]:hover,
 button[data-testid="baseButton-secondary"]:hover {
     background: var(--ga-surface-2) !important;
-    color: var(--ga-primary-800) !important;
+    color: var(--ga-navy-deep) !important;
     border-color: #94a3b8 !important;
 }
 
@@ -562,7 +626,8 @@ div[data-testid="stFileUploader"] {
 }
 
 div[data-testid="stFileUploader"] {
-    background: var(--ga-surface-2) !important;
+    background: linear-gradient(180deg, #fbfcfe 0%, #f7fafc 100%) !important;
+    border: 1px dashed var(--ga-border-strong) !important;
 }
 
 div[data-testid="stExpander"] {
@@ -574,6 +639,7 @@ div[data-testid="stExpander"] {
 
 div[data-testid="stDataFrame"] {
     border: 1px solid var(--ga-border) !important;
+    border-top: 2px solid rgba(21, 52, 91, 0.22) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
 }
@@ -624,6 +690,31 @@ label[data-testid="stWidgetLabel"] p {
         grid-template-columns: 1fr;
     }
 }
+
+/* Premium focus states */
+div[data-testid="stTextArea"] textarea:focus,
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stNumberInput"] input:focus {
+    border-color: var(--ga-teal) !important;
+    box-shadow: 0 0 0 2px rgba(20, 125, 120, 0.10) !important;
+}
+
+/* High-value headings use navy, never pure black */
+.ga-brand-title,
+.ga-workspace-title,
+.ga-nav-title,
+.ga-empty-title,
+.ga-app-frame .section-title {
+    color: var(--ga-navy-deep) !important;
+}
+
+/* Gold is reserved for orientation and premium cues */
+.ga-brand-kicker,
+.ga-nav-group,
+.ga-flow-num {
+    color: var(--ga-gold-deep) !important;
+}
+
 </style>
         """.strip(),
         unsafe_allow_html=True,
