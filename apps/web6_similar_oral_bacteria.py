@@ -997,23 +997,36 @@ if st.session_state.get("web6_response"):
             "model is not queried again and the candidate table is unchanged."
         )
 
-        add_column, button_column = st.columns([4, 1])
+        if added_organisms:
+            st.success("Added to the tree: " + ", ".join(added_organisms))
 
-        with add_column:
-            organism_to_add = st.text_input(
-                "Organism name",
-                value="",
-                placeholder="e.g. Tannerella forsythia",
-                key="organism_to_add",
-                label_visibility="collapsed",
-            )
+            if st.button("Remove added organisms", key="clear_added_organisms"):
+                st.session_state["web6_added_organisms"] = []
+                st.rerun()
 
-        with button_column:
-            add_clicked = st.button("Add to tree", key="add_organism_button",
-                                    use_container_width=True)
+        # A form rather than a bare text_input plus button: the two widgets
+        # submit together, Enter works as well as the button, and
+        # clear_on_submit empties the box once the name has been taken. With
+        # separate widgets the typed value and the click land on different
+        # script runs, which is why a name could appear to be ignored.
+        with st.form("add_organism_form", clear_on_submit=True):
+            form_columns = st.columns([4, 1])
 
-        if add_clicked:
-            name = organism_to_add.strip()
+            with form_columns[0]:
+                organism_to_add = st.text_input(
+                    "Organism name",
+                    value="",
+                    placeholder="e.g. Tannerella forsythia",
+                    label_visibility="collapsed",
+                )
+
+            with form_columns[1]:
+                submitted = st.form_submit_button(
+                    "Add to tree", use_container_width=True
+                )
+
+        if submitted:
+            name = " ".join(str(organism_to_add).split())
 
             if not name:
                 st.warning("Enter an organism name first.")
@@ -1021,11 +1034,4 @@ if st.session_state.get("web6_response"):
                 st.info(f"{name} is already in the tree.")
             else:
                 st.session_state["web6_added_organisms"] = added_organisms + [name]
-                st.rerun()
-
-        if added_organisms:
-            st.caption("Added to the tree: " + ", ".join(added_organisms))
-
-            if st.button("Remove added organisms", key="clear_added_organisms"):
-                st.session_state["web6_added_organisms"] = []
                 st.rerun()
