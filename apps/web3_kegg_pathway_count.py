@@ -222,7 +222,16 @@ def split_kegg_terms(value):
     if not text:
         return []
 
-    separators = [";", "|", ","]
+    # NOTE: the comma is deliberately NOT a separator.
+    # KEGG KO descriptions use commas as internal punctuation, e.g.
+    #   "starch-binding outer membrane protein, SusD/RagB family"  (K21572)
+    #   "RNA polymerase sigma-70 factor, ECF subfamily"            (K03088)
+    #   "multidrug resistance protein, MATE family"
+    # Splitting on "," shatters one ortholog into two unrelated "pathway"
+    # rows, each carrying the full gene count, and strips the qualifier that
+    # gives the term its meaning. Keep only ";" and "|", which match the
+    # protein-family and Bakta modules.
+    separators = [";", "|"]
 
     terms = [text]
 
@@ -240,6 +249,11 @@ def split_kegg_terms(value):
         if not clean_term:
             continue
 
+        # The prompt tells the model that "generic or uninformative pathways
+        # were removed", so the uninformative placeholder annotations have to
+        # be dropped here for that statement to hold. Without this,
+        # "uncharacterized protein" is typically the highest-count row in the
+        # table and the model reports it as a phenotype category.
         if clean_term.lower() in [
             "nan",
             "na",
@@ -249,6 +263,12 @@ def split_kegg_terms(value):
             "-",
             "false",
             "0",
+            "uncharacterized protein",
+            "hypothetical protein",
+            "unknown",
+            "unknown function",
+            "putative protein",
+            "predicted protein",
         ]:
             continue
 
