@@ -1001,9 +1001,14 @@ if st.session_state.get("web6_response"):
     add_column, add_button_column = st.columns([4, 1])
 
     with add_column:
-        st.text_input(
+        # Use the widget's RETURN VALUE, never a session_state lookup by key:
+        # the host app wraps Streamlit's callables and may rewrite widget
+        # keys, in which case st.session_state[<our key>] is empty even
+        # though the box visibly contains text. The return value is correct
+        # either way, and on the rerun the Add click triggers it still holds
+        # what the user typed.
+        typed_organism = st.text_input(
             "Organism name",
-            value="",
             placeholder="e.g. Tannerella forsythia",
             key=f"web6_organism_to_add_{add_counter}",
             label_visibility="collapsed",
@@ -1015,8 +1020,7 @@ if st.session_state.get("web6_response"):
         )
 
     if add_clicked:
-        typed = st.session_state.get(f"web6_organism_to_add_{add_counter}", "")
-        name = " ".join(str(typed).split())
+        name = " ".join(str(typed_organism or "").split())
 
         if not name:
             st.warning("Enter an organism name first.")
