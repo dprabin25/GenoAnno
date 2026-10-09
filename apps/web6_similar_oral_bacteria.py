@@ -663,7 +663,6 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
 
         return
 
-    st.caption("Species read from the candidate table: " + ", ".join(names))
 
     sequences = {}
     status = []
@@ -942,11 +941,43 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
 # not change, and the already-fetched 16S sequences come from cache.
 # ---------------------------------------------------------------------------
 
+# A stored result belongs to the files that produced it. Closing the tool and
+# reopening it, or clearing the uploaders, leaves no files but -- because the
+# result lives in session state so the tree controls can rerun without
+# re-querying the model -- would otherwise leave the previous run's output on
+# screen as if it described the new (empty) input. Drop it instead.
+if not (bakta_file and kbase_file and products_file):
+    for stale_key in (
+        "web6_response",
+        "web6_added_organisms",
+        "web6_tree_built",
+        "web6_add_counter",
+    ):
+        st.session_state.pop(stale_key, None)
+
+
 if st.session_state.get("web6_response"):
     stored_response = st.session_state["web6_response"]
     added_organisms = st.session_state.get("web6_added_organisms", [])
 
-    st.subheader("Result")
+    result_header, clear_column = st.columns([4, 1])
+
+    with result_header:
+        st.subheader("Result")
+
+    with clear_column:
+        if st.button("Clear result", key="web6_clear_result",
+                     use_container_width=True):
+            for stale_key in (
+                "web6_response",
+                "web6_added_organisms",
+                "web6_tree_built",
+                "web6_add_counter",
+            ):
+                st.session_state.pop(stale_key, None)
+
+            st.rerun()
+
     st.markdown(strip_step_labels(strip_step0_section(stored_response)))
 
     with st.expander("Show STEP 0 evidence checklist", expanded=False):
