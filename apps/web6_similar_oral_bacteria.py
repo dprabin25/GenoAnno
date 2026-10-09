@@ -295,6 +295,50 @@ def strip_step0_section(text):
     return _STEP0_PATTERN.sub("\n", str(text)).strip()
 
 
+# "STEP n" is prompt scaffolding -- it tells the model what order to reason in
+# and is meaningless to someone reading the finished result. The model is also
+# inconsistent about it, labelling some sections ("STEP 2 Bacterial Comparison
+# Table") and not others ("Comparison Table"), which makes the output look
+# half-numbered. Strip the prefix and keep the descriptive title, so headings
+# read uniformly however the model chose to label them. Markdown heading and
+# bold markers are preserved; a step heading with no title of its own is given
+# a sensible default rather than being left blank.
+
+_STEP_LABEL_PATTERN = re.compile(
+    r"""^(?P<lead>[^\S\n]*(?:\#{1,6}\s*)?(?:\*\*|__)?)   # heading / bold open
+        STEP\s*\d+\b                                      # the step label
+        [^\S\n]*(?:[:.–—-]+[^\S\n]*)?           # separator, if any
+        (?P<title>.*?)                                    # descriptive title
+        (?P<trail>(?:\*\*|__)?[^\S\n]*)$                  # bold close
+    """,
+    re.IGNORECASE | re.MULTILINE | re.VERBOSE,
+)
+
+_STEP_FALLBACK_TITLES = {
+    "1": "Phenotype profile summary",
+    "2": "Comparison table",
+    "3": "Summary",
+}
+
+
+def strip_step_labels(text):
+    """Drop "STEP n" prefixes from headings, keeping each section's title."""
+    if not text:
+        return ""
+
+    def replace(match):
+        title = match.group("title").strip()
+
+        if not title:
+            step_number = re.search(r"STEP\s*(\d+)", match.group(0), re.IGNORECASE)
+            key = step_number.group(1) if step_number else ""
+            title = _STEP_FALLBACK_TITLES.get(key, "Result")
+
+        return match.group("lead") + title + match.group("trail")
+
+    return _STEP_LABEL_PATTERN.sub(replace, str(text))
+
+
 # ---------------------------------------------------------------------------
 # Prompt assembly
 # ---------------------------------------------------------------------------
@@ -478,7 +522,7 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         # Shown: phenotype summary onward. Downloaded: the whole response,
         # including the STEP 0 checklist that grounds it.
         st.subheader("Result")
-        st.markdown(strip_step0_section(full_response))
+        st.markdown(strip_step_labels(strip_step0_section(full_response)))
 
         with st.expander("Show STEP 0 evidence checklist", expanded=False):
             st.markdown(full_response)
