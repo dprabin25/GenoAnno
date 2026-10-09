@@ -126,6 +126,17 @@ def parse_bakta_functional_categories(bakta_file):
     df = pd.read_csv(io.StringIO(data_str), sep="\t")
     df.columns = [c.lstrip("#").strip() for c in df.columns]
 
+    # Keep only protein-coding features. A Bakta TSV annotates every feature
+    # type -- tRNA, rRNA, ncRNA, ncRNA-region (riboswitches), tmRNA, CRISPR --
+    # and each carries a Product string, so they are otherwise counted as
+    # "genes" in a table the prompt presents as protein functional categories.
+    # Multi-copy RNA families can then outrank real protein products and claim
+    # top-N slots: in the Tannerella forsythia input, "Acido-Lenti-1 RNA" (12)
+    # and "Cobalamin riboswitch" (6) both reach Table 1 untreated. Guarded so
+    # a table lacking a Type column behaves exactly as before.
+    if "Type" in df.columns:
+        df = df[df["Type"].astype(str).str.strip().str.lower() == "cds"]
+
     products = df["Product"].dropna()
     products = products[products.str.strip() != ""]
     counts = (
