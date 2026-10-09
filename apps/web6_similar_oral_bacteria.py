@@ -31,12 +31,12 @@ import streamlit as st
 DEFAULT_INPUT_DESCRIPTION = """I annotated genes from a bacterial genome (an oral bacterium) using multiple annotation pipelines and summarized the results into four processed tables describing its functional gene composition.
 
 Table 1 - Functional category gene counts (Bakta):
-I selected the Product column from the Bakta annotation and counted how many genes map to each repeated product/function term. Ultra-generic, non-informative labels ("hypothetical protein", "uncharacterized protein") have been removed, and the table has been capped to the top most frequent categories - it is a partial, curated list, not the full gene set.
+I selected the Product column from the Bakta annotation and counted how many genes map to each repeated product/function term. Ultra-generic, non-informative labels ("hypothetical protein", "uncharacterized protein") have been removed. Every remaining category is listed, ordered by gene count, including categories represented by only one gene - most of this table is single-copy categories, and a low count is not a reason to disregard a row.
 Column 1: Functional category
 Column 2: Gene count
 
 Table 2 - KEGG-annotated gene function descriptions (KBASE):
-Each row is the free-text function description ("kegg_hit") tied to a gene's best KO match, counted by how many genes share that exact description. These are gene-level descriptions, NOT a curated pathway hierarchy - there is no row literally named "glycolysis" or "TCA cycle" unless it appears verbatim below. Do not invent or assume pathway-level labels that are not literal rows in this table. Generic/uninformative rows have been removed and the table capped to the top most frequent entries.
+Each row is the free-text function description ("kegg_hit") tied to a gene's best KO match, counted by how many genes share that exact description. These are gene-level descriptions, NOT a curated pathway hierarchy - there is no row literally named "glycolysis" or "TCA cycle" unless it appears verbatim below. Do not invent or assume pathway-level labels that are not literal rows in this table. Generic/uninformative rows have been removed; every remaining entry is listed, ordered by gene count, including single-gene entries.
 Column 1: KEGG-hit description
 Column 2: Gene count
 
@@ -94,26 +94,49 @@ GENERIC_LABELS = {
     "uncharacterized protein",
 }
 
-TOP_N_ROWS = 40  # cap on how many rows go into Tables 1 and 2
+# Row cap for Tables 1 and 2. None = send every category.
+#
+# Previously 40. Ranking by gene count selects for gene-family expansion,
+# which is the least species-specific part of a genome, while the categories
+# that distinguish related species are overwhelmingly single-copy: 86% of
+# distinct CDS products in the Tannerella forsythia input occur exactly once,
+# and because ties break alphabetically those singletons are scattered from
+# rank ~220 to 1526. Any intermediate cap is therefore an arbitrary slice
+# through alphabetically-ordered ties - at 500 rows the S-layer subunits are
+# included but the secreted protease is not; at 1000 the protease is included
+# but the sialidase is not. Sending every row costs ~0.3 cents more per run at
+# gpt-4o-mini list prices (3,268 -> 26,858 input tokens, well inside a 128k
+# context) and needs no cutoff to be justified in a methods section.
+TOP_N_ROWS = None
 
 
-def _clean_and_cap(counts: pd.DataFrame, label_col: str, top_n: int = TOP_N_ROWS):
+def _clean_and_cap(counts: pd.DataFrame, label_col: str, top_n=TOP_N_ROWS):
     """Drop generic/uninformative labels, sort by count, keep the top N.
 
-    Returns (trimmed_df, note) where note documents what was omitted so the
-    prompt can be transparent about the fact that this is a partial table.
+    top_n=None keeps every row. Returns (trimmed_df, note) where note states
+    what the table does and does not contain, so the prompt stays accurate
+    whichever setting is in force.
     """
     total_rows = len(counts)
     filtered = counts[~counts[label_col].str.strip().str.lower().isin(GENERIC_LABELS)]
     dropped_generic = total_rows - len(filtered)
     filtered = filtered.sort_values("Gene count", ascending=False).reset_index(drop=True)
-    trimmed = filtered.head(top_n)
+    trimmed = filtered if top_n is None else filtered.head(top_n)
     omitted = len(filtered) - len(trimmed)
-    note = (
-        f"(showing top {len(trimmed)} of {total_rows} total categories by gene count; "
-        f"{dropped_generic} generic/non-discriminating rows removed"
-        + (f"; {omitted} additional lower-count categories omitted for brevity)" if omitted > 0 else ")")
-    )
+
+    if omitted > 0:
+        note = (
+            f"(showing top {len(trimmed)} of {total_rows} total categories by gene count; "
+            f"{dropped_generic} generic/non-discriminating rows removed; "
+            f"{omitted} additional lower-count categories omitted for brevity)"
+        )
+    else:
+        note = (
+            f"(all {len(trimmed)} categories listed, ordered by gene count, "
+            f"including single-copy categories; "
+            f"{dropped_generic} generic/non-discriminating rows removed)"
+        )
+
     return trimmed, note
 
 
@@ -127,6 +150,17 @@ def parse_bakta_functional_categories(bakta_file):
     data_str = "\n".join(lines[header_idx:])
     df = pd.read_csv(io.StringIO(data_str), sep="\t")
     df.columns = [c.lstrip("#").strip() for c in df.columns]
+
+    # Keep only protein-coding features. A Bakta TSV annotates every feature
+    # type -- tRNA, rRNA, ncRNA, ncRNA-region (riboswitches), tmRNA, CRISPR --
+    # and each carries a Product string, so they are otherwise counted as
+    # "genes" in a table the prompt presents as protein functional categories.
+    # Multi-copy RNA families can then outrank real protein products and claim
+    # top-N slots: in the Tannerella forsythia input, "Acido-Lenti-1 RNA" (12)
+    # and "Cobalamin riboswitch" (6) both reach Table 1 untreated. Guarded so
+    # a table lacking a Type column behaves exactly as before.
+    if "Type" in df.columns:
+        df = df[df["Type"].astype(str).str.strip().str.lower() == "cds"]
 
     products = df["Product"].dropna()
     products = products[products.str.strip() != ""]
@@ -214,6 +248,120 @@ def parse_products_completeness(products_file):
 # Prompt assembly
 # ---------------------------------------------------------------------------
 
+# The model writes multi-item evidence cells in its comparison table as
+# "- item A <br> - item B", because an HTML <br> is the usual way to force a
+# line break inside a markdown table cell. st.markdown() does not render raw
+# HTML unless unsafe_allow_html=True, so those tags show up as literal "<br>"
+# text in the Result panel. Rather than enabling raw HTML -- which would let
+# arbitrary model output inject markup into the page -- normalise the tags
+# into plain "; " separators, matching how the other GenoAnno tabs clean their
+# output. Handles the bullet prefixes the model pairs them with so cells read
+# as "item A; item B" and not "- item A; - item B".
+
+_BR_PATTERN = re.compile(r"\s*<\s*br\s*/?\s*>\s*", re.IGNORECASE)
+
+
+def clean_model_output(text):
+    if not text:
+        return ""
+
+    cleaned = _BR_PATTERN.sub("; ", str(text))
+
+    # Drop the bullet markers that followed each <br>, now stranded after a
+    # separator ("; - item" -> "; item").
+    cleaned = re.sub(r";\s*[-*•]\s+", "; ", cleaned)
+
+    # A cell that began with a bullet keeps it only if it is a real list item
+    # at line start; inside a table cell it is noise ("| - item" -> "| item").
+    cleaned = re.sub(r"\|\s*[-*•]\s+", "| ", cleaned)
+
+    # Tidy artefacts from the substitutions.
+    cleaned = re.sub(r"(;\s*){2,}", "; ", cleaned)
+    cleaned = re.sub(r";\s*\|", " |", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r";\s*$", "", cleaned, flags=re.MULTILINE)
+
+    return cleaned.strip()
+
+
+# The prompt asks the model to write out a STEP 0 evidence checklist and calls
+# it "the sole basis for every later step". That checklist is the grounding
+# mechanism, not decoration: a non-reasoning model has no hidden scratchpad, so
+# the written rows are what hold the later steps to verbatim table values.
+# It is therefore still requested and still generated -- it is only hidden from
+# the Result panel, which readers want to start at the phenotype summary. The
+# full response, checklist included, is what the download button writes, so the
+# grounding stays auditable.
+
+_STEP0_PATTERN = re.compile(
+    r"""(?:^|\n)            # start of a line
+        [^\S\n]*            # leading spaces
+        (?:[#>*_\-\d.)\s]*) # markdown heading / bold / list decoration
+        STEP\s*0\b          # the heading itself
+        .*?                 # the checklist body
+        (?=\n[^\S\n]*(?:[#>*_\-\d.)\s]*)STEP\s*1\b)  # stop before STEP 1
+    """,
+    re.IGNORECASE | re.DOTALL | re.VERBOSE,
+)
+
+
+def strip_step0_section(text):
+    """Remove the STEP 0 checklist from text shown in the Result panel.
+
+    Only strips when a STEP 1 heading follows, so a response that is shaped
+    differently than expected is passed through untouched rather than being
+    truncated.
+    """
+    if not text:
+        return ""
+
+    return _STEP0_PATTERN.sub("\n", str(text)).strip()
+
+
+# "STEP n" is prompt scaffolding -- it tells the model what order to reason in
+# and is meaningless to someone reading the finished result. The model is also
+# inconsistent about it, labelling some sections ("STEP 2 Bacterial Comparison
+# Table") and not others ("Comparison Table"), which makes the output look
+# half-numbered. Strip the prefix and keep the descriptive title, so headings
+# read uniformly however the model chose to label them. Markdown heading and
+# bold markers are preserved; a step heading with no title of its own is given
+# a sensible default rather than being left blank.
+
+_STEP_LABEL_PATTERN = re.compile(
+    r"""^(?P<lead>[^\S\n]*(?:\#{1,6}\s*)?(?:\*\*|__)?)   # heading / bold open
+        STEP\s*\d+\b                                      # the step label
+        [^\S\n]*(?:[:.–—-]+[^\S\n]*)?           # separator, if any
+        (?P<title>.*?)                                    # descriptive title
+        (?P<trail>(?:\*\*|__)?[^\S\n]*)$                  # bold close
+    """,
+    re.IGNORECASE | re.MULTILINE | re.VERBOSE,
+)
+
+_STEP_FALLBACK_TITLES = {
+    "1": "Phenotype profile summary",
+    "2": "Comparison table",
+    "3": "Summary",
+}
+
+
+def strip_step_labels(text):
+    """Drop "STEP n" prefixes from headings, keeping each section's title."""
+    if not text:
+        return ""
+
+    def replace(match):
+        title = match.group("title").strip()
+
+        if not title:
+            step_number = re.search(r"STEP\s*(\d+)", match.group(0), re.IGNORECASE)
+            key = step_number.group(1) if step_number else ""
+            title = _STEP_FALLBACK_TITLES.get(key, "Result")
+
+        return match.group("lead") + title + match.group("trail")
+
+    return _STEP_LABEL_PATTERN.sub(replace, str(text))
+
+
 def _to_markdown_table(df: pd.DataFrame) -> str:
     try:
         return df.to_markdown(index=False)
@@ -257,10 +405,12 @@ def build_combined_prompt(
 # user_temperature, user_max_tokens). No new config screen needed.
 # ---------------------------------------------------------------------------
 
-MAX_ANALYSIS_TEMPERATURE = 0.2  # this tab does grounded table lookup, not
-# creative writing - repeated runs on identical input should converge on the
-# same candidates. Cap temperature regardless of the user's global dashboard
-# setting (which may be tuned higher for other tabs).
+DEFAULT_TEMPERATURE = 0.5  # this tab uses the dashboard temperature setting
+# unchanged, like every other GenoAnno tab, so all modules are queried under
+# identical sampling conditions and cross-module differences reflect the
+# annotation source rather than a per-tab parameter. Run-to-run stability of
+# this tab is assessed separately rather than enforced here; the prompt's own
+# DETERMINISM RULE still asks the model for a reproducible answer.
 
 
 def call_openai(prompt: str) -> str:
@@ -268,7 +418,13 @@ def call_openai(prompt: str) -> str:
 
     api_key = st.session_state.get("user_openai_api_key", "")
     model = st.session_state.get("user_selected_model", "gpt-4o-mini")
-    temperature = min(st.session_state.get("user_temperature", 0.5), MAX_ANALYSIS_TEMPERATURE)
+
+    temperature = st.session_state.get("user_temperature", DEFAULT_TEMPERATURE)
+    try:
+        temperature = float(temperature)
+    except (TypeError, ValueError):
+        temperature = DEFAULT_TEMPERATURE
+
     max_tokens = st.session_state.get("user_max_tokens", 2000)
 
     if not api_key:
@@ -380,7 +536,19 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         )
 
         with st.spinner("Querying the model..."):
-            response = call_openai(prompt)
+            full_response = clean_model_output(call_openai(prompt))
 
+        # Shown: phenotype summary onward, with the prompt's step numbering
+        # dropped. Downloaded: the whole response, STEP 0 checklist included.
         st.subheader("Result")
-        st.markdown(response)
+        st.markdown(strip_step_labels(strip_step0_section(full_response)))
+
+        with st.expander("Show STEP 0 evidence checklist", expanded=False):
+            st.markdown(full_response)
+
+        st.download_button(
+            label="Download AI interpretation",
+            data=full_response,
+            file_name="similar_oral_bacteria_interpretation.txt",
+            mime="text/plain",
+        )
