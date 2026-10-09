@@ -75,7 +75,9 @@ Question: Identify other oral bacteria that have similar gene composition to min
 Output, in this order:
 1. The STEP 0 evidence checklist (bullet list, verbatim rows only).
 2. A short (2-4 sentence) summary of the phenotype profile you derived in Step 1, so the reasoning can be sanity-checked.
-3. A table with columns: Bacterium name | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | Confidence.
+3. A table with columns: Bacterium name | Phylum | Shared functional categories, pathways, and families (cite which of Tables 1-4 support the match, and note whether each is a discriminating or universal category) | Phenotype description | Confidence.
+
+For the Phylum column, give the candidate's phylum and, in brackets, whether it is Gram-positive or Gram-negative - for example "Bacillota [Gram-positive]" or "Bacteroidota [Gram-negative]". Before citing any row as shared evidence, check that the candidate's cell envelope can actually possess it: outer-membrane systems (TonB-dependent receptors and their plug domains, SusC/SusD/RagA/RagB nutrient uptake, LPS export, outer-membrane beta-barrel proteins, TolC-family channels, type IX secretion) exist only in Gram-negative organisms and cannot be shared with a Gram-positive candidate. If a row is incompatible with a candidate's envelope, do not list it as shared evidence for that candidate, and say in the Shared column which evidence had to be excluded on envelope grounds.
 4. A short summary paragraph.
 
 List well-characterized bacteria with the most consistent shared, discriminating (not universal) functional categories/pathways/families across the four tables. Describe the phenotype of each of these bacteria.
