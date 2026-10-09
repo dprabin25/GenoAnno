@@ -637,14 +637,18 @@ def draw_16s_tree(tree, n_taxa):
     return figure
 
 
-def render_16s_phylogeny(response_text, query_organism="", email="", api_key=""):
-    """Fetch 16S for each candidate, draw the tree, report what was missing."""
-    names = collect_candidate_names(response_text)
+def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""):
+    """Fetch 16S for each candidate, draw the tree, report what was missing.
 
-    if query_organism.strip():
-        names = [query_organism.strip()] + [
-            n for n in names if n.lower() != query_organism.strip().lower()
-        ]
+    extra_organisms are names the user added after the analysis ran. They are
+    treated exactly like candidates for fetching and tree-building, and are
+    marked in the status table so it stays clear which came from the model.
+    """
+    names = collect_candidate_names(response_text)
+    added = [str(o).strip() for o in extra_organisms if str(o).strip()]
+
+    # Added organisms lead, so they are easy to find in the status table.
+    names = added + [n for n in names if n.lower() not in (a.lower() for a in added)]
 
     if not names:
         st.warning(
@@ -669,12 +673,16 @@ def render_16s_phylogeny(response_text, query_organism="", email="", api_key="")
     for index, name in enumerate(names, start=1):
         accession, result = fetch_16s(name, email=email, api_key=api_key)
 
+        source = "added by you" if name in added else "model candidate"
+
         if accession:
             sequences[name] = result
-            status.append({"Species": name, "16S accession": accession,
+            status.append({"Species": name, "Source": source,
+                           "16S accession": accession,
                            "Length (bp)": len(result), "Status": "retrieved"})
         else:
-            status.append({"Species": name, "16S accession": "-",
+            status.append({"Species": name, "Source": source,
+                           "16S accession": "-",
                            "Length (bp)": "-", "Status": f"missing - {result}"})
 
         progress.progress(index / len(names), text=f"Retrieving 16S sequences... ({index}/{len(names)})")
@@ -873,30 +881,6 @@ extra_instructions = st.text_area(
     "Any additional instructions (optional)", value="", height=80, key="extra_instructions"
 )
 
-with st.expander("16S phylogeny options", expanded=False):
-    build_tree = st.checkbox(
-        "Build a 16S tree from the candidate species (queries NCBI)",
-        value=True,
-        key="build_16s_tree",
-    )
-    st.caption(
-        "Your own organism can be added to the tree after the analysis runs - "
-        "see the box under the tree. Adding one does not re-query the model."
-    )
-    ncbi_email = st.text_input(
-        "Contact email for NCBI (recommended)",
-        value="",
-        key="ncbi_email",
-        help="NCBI asks programmatic users to identify themselves. Sent only "
-             "to NCBI as the E-utilities 'email' parameter.",
-    )
-    ncbi_api_key = st.text_input(
-        "NCBI API key (optional, raises the rate limit)",
-        value="",
-        type="password",
-        key="ncbi_api_key",
-    )
-
 if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"):
     if not (bakta_file and kbase_file and products_file):
         st.warning("Please upload all three files first.")
@@ -939,26 +923,109 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         with st.spinner("Querying the model..."):
             full_response = clean_model_output(call_openai(prompt))
 
-        # Shown: phenotype summary onward, with the prompt's step numbering
-        # dropped. Downloaded: the whole response, STEP 0 checklist included.
-        st.subheader("Result")
-        st.markdown(strip_step_labels(strip_step0_section(full_response)))
+        # Held in session state so the result and its tree survive the reruns
+        # Streamlit performs when a widget below is used. Without this, adding
+        # an organism to the tree would re-trigger the model call.
+        st.session_state["web6_response"] = full_response
+        st.session_state.setdefault("web6_added_organisms", [])
 
-        with st.expander("Show STEP 0 evidence checklist", expanded=False):
-            st.markdown(full_response)
 
-        st.download_button(
-            label="Download AI interpretation",
-            data=full_response,
-            file_name="similar_oral_bacteria_interpretation.txt",
-            mime="text/plain",
+# ---------------------------------------------------------------------------
+# Result, tree, and post-hoc organism addition
+#
+# Rendered outside the button block and driven from session state, so the
+# "add an organism" control below can rebuild the tree on its own. That step
+# only queries NCBI -- the model is not called again, the candidate table does
+# not change, and the already-fetched 16S sequences come from cache.
+# ---------------------------------------------------------------------------
+
+if st.session_state.get("web6_response"):
+    stored_response = st.session_state["web6_response"]
+    added_organisms = st.session_state.get("web6_added_organisms", [])
+
+    st.subheader("Result")
+    st.markdown(strip_step_labels(strip_step0_section(stored_response)))
+
+    with st.expander("Show STEP 0 evidence checklist", expanded=False):
+        st.markdown(stored_response)
+
+    st.download_button(
+        label="Download AI interpretation",
+        data=stored_response,
+        file_name="similar_oral_bacteria_interpretation.txt",
+        mime="text/plain",
+    )
+
+    # The tree and everything that configures it live here, after the result,
+    # because none of it is meaningful until there are candidate species to
+    # tree. Nothing about the phylogeny appears in the pre-run form.
+    st.divider()
+    st.subheader("16S phylogeny of the candidate species")
+
+    build_tree = st.toggle(
+        "Build the tree (queries NCBI for one 16S sequence per species)",
+        value=True,
+        key="build_16s_tree",
+    )
+
+    if build_tree:
+        with st.expander("NCBI options", expanded=False):
+            ncbi_email = st.text_input(
+                "Contact email (recommended)",
+                value="",
+                key="ncbi_email",
+                help="NCBI asks programmatic users to identify themselves. "
+                     "Sent only to NCBI, as the E-utilities 'email' parameter.",
+            )
+            ncbi_api_key = st.text_input(
+                "API key (optional, raises the rate limit)",
+                value="",
+                type="password",
+                key="ncbi_api_key",
+            )
+
+        render_16s_phylogeny(
+            stored_response,
+            extra_organisms=added_organisms,
+            email=ncbi_email,
+            api_key=ncbi_api_key,
         )
 
-        if build_tree:
-            st.subheader("16S phylogeny of the candidate species")
-            render_16s_phylogeny(
-                full_response,
-                query_organism=tree_query_organism,
-                email=ncbi_email,
-                api_key=ncbi_api_key,
+        st.markdown("**Add an organism to the tree**")
+        st.caption(
+            "Fetches that organism's 16S from NCBI and redraws the tree. The "
+            "model is not queried again and the candidate table is unchanged."
+        )
+
+        add_column, button_column = st.columns([4, 1])
+
+        with add_column:
+            organism_to_add = st.text_input(
+                "Organism name",
+                value="",
+                placeholder="e.g. Tannerella forsythia",
+                key="organism_to_add",
+                label_visibility="collapsed",
             )
+
+        with button_column:
+            add_clicked = st.button("Add to tree", key="add_organism_button",
+                                    use_container_width=True)
+
+        if add_clicked:
+            name = organism_to_add.strip()
+
+            if not name:
+                st.warning("Enter an organism name first.")
+            elif name.lower() in (o.lower() for o in added_organisms):
+                st.info(f"{name} is already in the tree.")
+            else:
+                st.session_state["web6_added_organisms"] = added_organisms + [name]
+                st.rerun()
+
+        if added_organisms:
+            st.caption("Added to the tree: " + ", ".join(added_organisms))
+
+            if st.button("Remove added organisms", key="clear_added_organisms"):
+                st.session_state["web6_added_organisms"] = []
+                st.rerun()
