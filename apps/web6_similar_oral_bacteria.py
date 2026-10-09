@@ -482,6 +482,13 @@ def fetch_16s(organism, email="", api_key=""):
 # abbreviated genus ("P. intermedia") so those rows are not silently lost.
 _BINOMIAL = re.compile(r"^(?:[A-Z][a-z]+|[A-Z]\.)\s+[a-z][a-z-]{2,}")
 
+# Stricter form for the plain-text fallback: the whole field must be a
+# binomial, optionally with one subspecies/strain qualifier.
+_BINOMIAL_EXACT = re.compile(
+    r"(?:[A-Z][a-z]+|[A-Z]\.)\s+[a-z][a-z-]{2,}"
+    r"(?:\s+(?:subsp\.|var\.|str\.|sp\.)?\s*[A-Za-z0-9-]+)?"
+)
+
 _NOT_A_SPECIES = {
     "bacterium name", "bacterium", "name", "species", "candidate",
     "summary", "summary paragraph", "phylum", "confidence",
@@ -534,14 +541,21 @@ def collect_candidate_names(text, limit=12):
 
             continue
 
-    # Last resort: a binomial starting a line, e.g. a table flattened to text
-    # with multiple spaces instead of tabs.
+    # Last resort: a table flattened to text with runs of spaces instead of
+    # tabs. Requires both a column separator on the line and a first field
+    # that is nothing but a binomial, so ordinary prose ("The analysis shows
+    # that...") cannot be mistaken for a species.
     if not names:
         for line in text.splitlines():
             stripped = re.sub(r"[*_`]", "", line).strip()
 
-            if _BINOMIAL.match(stripped):
-                consider(re.split(r"\s{2,}|\t|\|", stripped)[0])
+            if not re.search(r"\s{2,}|\t|\|", stripped):
+                continue
+
+            first_field = re.split(r"\s{2,}|\t|\|", stripped)[0].strip()
+
+            if _BINOMIAL_EXACT.fullmatch(first_field):
+                consider(first_field)
 
     return names[:limit]
 
@@ -865,13 +879,9 @@ with st.expander("16S phylogeny options", expanded=False):
         value=True,
         key="build_16s_tree",
     )
-    tree_query_organism = st.text_input(
-        "Include your own organism in the tree (optional)",
-        value="",
-        placeholder="e.g. Tannerella forsythia",
-        key="tree_query_organism",
-        help="Fetches this organism's 16S too, so the candidates can be seen "
-             "relative to it. Leave blank to tree the candidates only.",
+    st.caption(
+        "Your own organism can be added to the tree after the analysis runs - "
+        "see the box under the tree. Adding one does not re-query the model."
     )
     ncbi_email = st.text_input(
         "Contact email for NCBI (recommended)",
