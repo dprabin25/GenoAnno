@@ -261,6 +261,40 @@ def clean_model_output(text):
     return cleaned.strip()
 
 
+# The prompt asks the model to write out a STEP 0 evidence checklist and calls
+# it "the sole basis for every later step". That checklist is the grounding
+# mechanism, not decoration: a non-reasoning model has no hidden scratchpad, so
+# the written rows are what hold the later steps to verbatim table values.
+# It is therefore still requested and still generated -- it is only hidden from
+# the Result panel, which readers want to start at the phenotype summary. The
+# full response, checklist included, is what the download button writes, so the
+# grounding stays auditable.
+
+_STEP0_PATTERN = re.compile(
+    r"""(?:^|\n)            # start of a line
+        [^\S\n]*            # leading spaces
+        (?:[#>*_\-\d.)\s]*) # markdown heading / bold / list decoration
+        STEP\s*0\b          # the heading itself
+        .*?                 # the checklist body
+        (?=\n[^\S\n]*(?:[#>*_\-\d.)\s]*)STEP\s*1\b)  # stop before STEP 1
+    """,
+    re.IGNORECASE | re.DOTALL | re.VERBOSE,
+)
+
+
+def strip_step0_section(text):
+    """Remove the STEP 0 checklist from text shown in the Result panel.
+
+    Only strips when a STEP 1 heading follows, so a response that is shaped
+    differently than expected is passed through untouched rather than being
+    truncated.
+    """
+    if not text:
+        return ""
+
+    return _STEP0_PATTERN.sub("\n", str(text)).strip()
+
+
 # ---------------------------------------------------------------------------
 # Prompt assembly
 # ---------------------------------------------------------------------------
@@ -439,14 +473,19 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         )
 
         with st.spinner("Querying the model..."):
-            response = clean_model_output(call_openai(prompt))
+            full_response = clean_model_output(call_openai(prompt))
 
+        # Shown: phenotype summary onward. Downloaded: the whole response,
+        # including the STEP 0 checklist that grounds it.
         st.subheader("Result")
-        st.markdown(response)
+        st.markdown(strip_step0_section(full_response))
+
+        with st.expander("Show STEP 0 evidence checklist", expanded=False):
+            st.markdown(full_response)
 
         st.download_button(
             label="Download AI interpretation",
-            data=response,
+            data=full_response,
             file_name="similar_oral_bacteria_interpretation.txt",
             mime="text/plain",
         )
