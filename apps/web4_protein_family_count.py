@@ -251,6 +251,11 @@ def split_protein_family_terms(value):
         if not clean_term:
             continue
 
+        # The prompt tells the model that "generic or uninformative protein
+        # families were removed", so the uninformative placeholder annotations
+        # have to be dropped here for that statement to hold. Otherwise
+        # placeholder rows compete for the top-N slots with real families and
+        # the model reports them as a phenotype category.
         if clean_term.lower() in [
             "nan",
             "na",
@@ -260,6 +265,12 @@ def split_protein_family_terms(value):
             "-",
             "false",
             "0",
+            "uncharacterized protein",
+            "hypothetical protein",
+            "unknown",
+            "unknown function",
+            "putative protein",
+            "predicted protein",
         ]:
             continue
 
@@ -273,7 +284,14 @@ def build_protein_family_count_table(df, protein_family_column):
 
     for value in df[protein_family_column]:
         terms = split_protein_family_terms(value)
-        all_terms.extend(terms)
+
+        # Count each family at most once per gene. The source column lists
+        # every domain hit on a protein, so a protein carrying the same
+        # family twice (repeat domains) would otherwise contribute 2 to a
+        # column the prompt labels "Gene count". De-duplicating per row keeps
+        # the count a gene count rather than a domain-occurrence count.
+        # dict.fromkeys preserves first-seen order, so output stays stable.
+        all_terms.extend(dict.fromkeys(terms))
 
     if not all_terms:
         return pd.DataFrame(columns=["Protein function family", "Gene count"])
