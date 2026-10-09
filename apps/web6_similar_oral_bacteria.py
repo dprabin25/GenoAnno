@@ -19,6 +19,8 @@
 # ============================================================
 
 import io
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -220,6 +222,46 @@ def parse_products_completeness(products_file):
 
 
 # ---------------------------------------------------------------------------
+# Model output cleanup
+# ---------------------------------------------------------------------------
+
+# The model writes multi-item evidence cells in its comparison table as
+# "- item A <br> - item B", because an HTML <br> is the usual way to force a
+# line break inside a markdown table cell. st.markdown() does not render raw
+# HTML unless unsafe_allow_html=True, so those tags show up as literal "<br>"
+# text in the Result panel. Rather than enabling raw HTML -- which would let
+# arbitrary model output inject markup into the page -- normalise the tags
+# into plain "; " separators, matching how the other GenoAnno tabs clean their
+# output. Handles the bullet prefixes the model pairs them with so cells read
+# as "item A; item B" and not "- item A; - item B".
+
+_BR_PATTERN = re.compile(r"\s*<\s*br\s*/?\s*>\s*", re.IGNORECASE)
+
+
+def clean_model_output(text):
+    if not text:
+        return ""
+
+    cleaned = _BR_PATTERN.sub("; ", str(text))
+
+    # Drop the bullet markers that followed each <br>, now stranded after a
+    # separator ("; - item" -> "; item").
+    cleaned = re.sub(r";\s*[-*•]\s+", "; ", cleaned)
+
+    # A cell that began with a bullet keeps it only if it is a real list item
+    # at line start; inside a table cell it is noise ("| - item" -> "| item").
+    cleaned = re.sub(r"\|\s*[-*•]\s+", "| ", cleaned)
+
+    # Tidy artefacts from the substitutions.
+    cleaned = re.sub(r"(;\s*){2,}", "; ", cleaned)
+    cleaned = re.sub(r";\s*\|", " |", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r";\s*$", "", cleaned, flags=re.MULTILINE)
+
+    return cleaned.strip()
+
+
+# ---------------------------------------------------------------------------
 # Prompt assembly
 # ---------------------------------------------------------------------------
 
@@ -389,7 +431,14 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         )
 
         with st.spinner("Querying the model..."):
-            response = call_openai(prompt)
+            response = clean_model_output(call_openai(prompt))
 
         st.subheader("Result")
         st.markdown(response)
+
+        st.download_button(
+            label="Download AI interpretation",
+            data=response,
+            file_name="similar_oral_bacteria_interpretation.txt",
+            mime="text/plain",
+        )
