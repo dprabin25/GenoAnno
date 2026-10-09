@@ -308,10 +308,12 @@ def build_combined_prompt(
 # user_temperature, user_max_tokens). No new config screen needed.
 # ---------------------------------------------------------------------------
 
-MAX_ANALYSIS_TEMPERATURE = 0.2  # this tab does grounded table lookup, not
-# creative writing - repeated runs on identical input should converge on the
-# same candidates. Cap temperature regardless of the user's global dashboard
-# setting (which may be tuned higher for other tabs).
+DEFAULT_TEMPERATURE = 0.5  # this tab uses the dashboard temperature setting
+# unchanged, like every other GenoAnno tab, so all modules are queried under
+# identical sampling conditions and cross-module differences reflect the
+# annotation source rather than a per-tab parameter. Run-to-run stability of
+# this tab is assessed separately rather than enforced here; the prompt's own
+# DETERMINISM RULE still asks the model for a reproducible answer.
 
 
 def call_openai(prompt: str) -> str:
@@ -319,7 +321,13 @@ def call_openai(prompt: str) -> str:
 
     api_key = st.session_state.get("user_openai_api_key", "")
     model = st.session_state.get("user_selected_model", "gpt-4o-mini")
-    temperature = min(st.session_state.get("user_temperature", 0.5), MAX_ANALYSIS_TEMPERATURE)
+
+    temperature = st.session_state.get("user_temperature", DEFAULT_TEMPERATURE)
+    try:
+        temperature = float(temperature)
+    except (TypeError, ValueError):
+        temperature = DEFAULT_TEMPERATURE
+
     max_tokens = st.session_state.get("user_max_tokens", 2000)
 
     if not api_key:
