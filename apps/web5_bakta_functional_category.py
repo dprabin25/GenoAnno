@@ -313,9 +313,45 @@ def split_function_terms(value):
     return cleaned_terms
 
 
+def split_cds_and_non_cds(df):
+    """Separate protein-coding rows from everything else in a Bakta table.
+
+    A Bakta TSV lists every annotated feature, not just proteins: tRNA, rRNA,
+    ncRNA, ncRNA-region, ncRNA riboswitches, tmRNA and CRISPR arrays all carry
+    a Product string and are counted as "genes" if they are not excluded.
+    Those products are not protein functional categories, and because some
+    ncRNA families are multi-copy they can outrank real protein products and
+    reach the top-N table handed to the model.
+
+    Returns (cds_df, non_cds_df). If the table has no "Type" column -- e.g. a
+    pre-made two-column count table, or a non-Bakta source -- every row is
+    treated as coding so behaviour is unchanged.
+    """
+    if "Type" not in df.columns:
+        return df, df.iloc[0:0]
+
+    is_cds = df["Type"].astype(str).str.strip().str.lower() == "cds"
+
+    return df[is_cds], df[~is_cds]
+
+
 def build_function_count_table(df, selected_column, remove_hypothetical=True):
     retained_terms = []
     removed_records = []
+
+    # Drop non-coding features before counting, and log them in the removal
+    # table so the row arithmetic shown in the UI still reconciles.
+    df, non_cds_df = split_cds_and_non_cds(df)
+
+    for _, non_cds_row in non_cds_df.iterrows():
+        removed_records.append(
+            {
+                "Removed functional category": non_cds_row[selected_column],
+                "Removal reason": "non-coding feature ({})".format(
+                    str(non_cds_row["Type"]).strip()
+                ),
+            }
+        )
 
     for value in df[selected_column]:
         if is_removed_function(value, remove_hypothetical=remove_hypothetical):
