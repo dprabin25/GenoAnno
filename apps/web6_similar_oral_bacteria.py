@@ -478,39 +478,86 @@ def fetch_16s(organism, email="", api_key=""):
     return accession, sequence
 
 
+# A binomial: capitalised genus, lower-case species epithet. Accepts an
+# abbreviated genus ("P. intermedia") so those rows are not silently lost.
+_BINOMIAL = re.compile(r"^(?:[A-Z][a-z]+|[A-Z]\.)\s+[a-z][a-z-]{2,}")
+
+_NOT_A_SPECIES = {
+    "bacterium name", "bacterium", "name", "species", "candidate",
+    "summary", "summary paragraph", "phylum", "confidence",
+}
+
+
 def collect_candidate_names(text, limit=12):
-    """Species names from the first column of the model's candidate table."""
+    """Species names from the first column of the model's candidate table.
+
+    The model is inconsistent about table format -- sometimes pipe-delimited
+    markdown, sometimes tab-separated -- so both are accepted. If neither
+    parses, falls back to scanning for binomials at line starts, which still
+    recovers the candidates from a plain-text table.
+    """
+    text = str(text or "")
     names = []
 
-    for line in str(text or "").splitlines():
-        if line.count("|") < 3:
-            continue
+    def consider(cell):
+        name = re.sub(r"[*_`]", "", str(cell)).strip().strip(".")
 
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-
-        if len(cells) < 3:
-            continue
-        if set("".join(cells)) <= set("-: "):
-            continue
-
-        name = re.sub(r"[*_`]", "", cells[0]).strip()
-
-        if not name or name.lower() in ("bacterium name", "bacterium", "name"):
-            continue
-        # A binomial, optionally with subspecies/strain words after it.
-        if not re.match(r"^[A-Z][a-z]+ [a-z]{3,}", name):
-            continue
+        if not name or name.lower() in _NOT_A_SPECIES:
+            return
+        if not _BINOMIAL.match(name):
+            return
         if name not in names:
             names.append(name)
+
+    for line in text.splitlines():
+        stripped = line.strip()
+
+        if not stripped:
+            continue
+
+        # Markdown pipe table.
+        if stripped.count("|") >= 3:
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+
+            if len(cells) >= 3 and not set("".join(cells)) <= set("-: "):
+                consider(cells[0])
+
+            continue
+
+        # Tab-separated table (what Streamlit's markdown renderer emits, and
+        # what the model sometimes produces directly).
+        if "\t" in stripped:
+            cells = [c.strip() for c in stripped.split("\t")]
+
+            if len(cells) >= 3:
+                consider(cells[0])
+
+            continue
+
+    # Last resort: a binomial starting a line, e.g. a table flattened to text
+    # with multiple spaces instead of tabs.
+    if not names:
+        for line in text.splitlines():
+            stripped = re.sub(r"[*_`]", "", line).strip()
+
+            if _BINOMIAL.match(stripped):
+                consider(re.split(r"\s{2,}|\t|\|", stripped)[0])
 
     return names[:limit]
 
 
 def build_16s_tree(sequences):
     """Neighbour-joining tree from pairwise identity. Returns (tree, newick)."""
-    from Bio import Phylo
-    from Bio.Align import PairwiseAligner
-    from Bio.Phylo.TreeConstruction import DistanceMatrix, DistanceTreeConstructor
+    try:
+        from Bio import Phylo
+        from Bio.Align import PairwiseAligner
+        from Bio.Phylo.TreeConstruction import DistanceMatrix, DistanceTreeConstructor
+    except ImportError as error:
+        raise RuntimeError(
+            "Biopython is not installed in this environment. Add "
+            "'biopython' to requirements.txt and reboot the app "
+            f"({error})."
+        ) from error
 
     labels = list(sequences)
 
@@ -586,8 +633,19 @@ def render_16s_phylogeny(response_text, query_organism="", email="", api_key="")
         ]
 
     if not names:
-        st.info("No species names could be read from the candidate table.")
+        st.warning(
+            "No species names could be read from the candidate table, so no "
+            "tree was built. The parser accepts pipe-delimited or "
+            "tab-separated tables and lines beginning with a binomial; the "
+            "response matched none of these."
+        )
+
+        with st.expander("Show the response the parser received", expanded=False):
+            st.code(str(response_text)[:4000] or "(empty)")
+
         return
+
+    st.caption("Species read from the candidate table: " + ", ".join(names))
 
     sequences = {}
     status = []
@@ -801,6 +859,34 @@ extra_instructions = st.text_area(
     "Any additional instructions (optional)", value="", height=80, key="extra_instructions"
 )
 
+with st.expander("16S phylogeny options", expanded=False):
+    build_tree = st.checkbox(
+        "Build a 16S tree from the candidate species (queries NCBI)",
+        value=True,
+        key="build_16s_tree",
+    )
+    tree_query_organism = st.text_input(
+        "Include your own organism in the tree (optional)",
+        value="",
+        placeholder="e.g. Tannerella forsythia",
+        key="tree_query_organism",
+        help="Fetches this organism's 16S too, so the candidates can be seen "
+             "relative to it. Leave blank to tree the candidates only.",
+    )
+    ncbi_email = st.text_input(
+        "Contact email for NCBI (recommended)",
+        value="",
+        key="ncbi_email",
+        help="NCBI asks programmatic users to identify themselves. Sent only "
+             "to NCBI as the E-utilities 'email' parameter.",
+    )
+    ncbi_api_key = st.text_input(
+        "NCBI API key (optional, raises the rate limit)",
+        value="",
+        type="password",
+        key="ncbi_api_key",
+    )
+
 if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"):
     if not (bakta_file and kbase_file and products_file):
         st.warning("Please upload all three files first.")
@@ -857,3 +943,12 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
             file_name="similar_oral_bacteria_interpretation.txt",
             mime="text/plain",
         )
+
+        if build_tree:
+            st.subheader("16S phylogeny of the candidate species")
+            render_16s_phylogeny(
+                full_response,
+                query_organism=tree_query_organism,
+                email=ncbi_email,
+                api_key=ncbi_api_key,
+            )
