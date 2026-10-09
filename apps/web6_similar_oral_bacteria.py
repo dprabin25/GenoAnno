@@ -19,7 +19,11 @@
 # ============================================================
 
 import io
+import json
 import re
+import time
+import urllib.parse
+import urllib.request
 
 import pandas as pd
 import streamlit as st
@@ -362,6 +366,305 @@ def strip_step_labels(text):
         return match.group("lead") + title + match.group("trail")
 
     return _STEP_LABEL_PATTERN.sub(replace, str(text))
+
+
+# ---------------------------------------------------------------------------
+# 16S phylogeny of the candidate species
+# ---------------------------------------------------------------------------
+#
+# The candidate table names species; this section fetches one 16S rRNA
+# sequence per species from NCBI Nucleotide and draws a neighbour-joining tree
+# so the candidates can be seen in relation to each other rather than only
+# read as a list. A species with no usable 16S record is reported as missing
+# rather than silently dropped.
+#
+# SCOPE: distances here are 1 - pairwise identity from a Biopython global
+# alignment, not a multiple-sequence alignment, and no model selection or
+# bootstrapping is performed. That is adequate for a quick look at whether the
+# candidates cluster sensibly, and NOT adequate for publication. The FASTA
+# download exists for that: realign it (MAFFT/MUSCLE) and infer the tree with
+# IQ-TREE or RAxML with support values if the figure is going into a paper.
+
+NCBI_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+# NCBI asks that programmatic users identify themselves and stay under 3
+# requests/second without an API key (10/second with one).
+NCBI_TOOL_NAME = "GenoAnno"
+NCBI_REQUEST_INTERVAL = 0.4
+
+# 16S in bacteria is ~1540 bp. The length bound keeps the hit list to
+# full-length gene records and rejects short partial-sequence submissions and
+# whole genomes that merely mention 16S.
+SIXTEEN_S_MIN_LEN = 1200
+SIXTEEN_S_MAX_LEN = 1700
+
+
+def _eutils_get(endpoint, params, timeout=30):
+    url = f"{NCBI_EUTILS}/{endpoint}?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(url, headers={"User-Agent": NCBI_TOOL_NAME})
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
+def fetch_16s(organism, email="", api_key=""):
+    """One 16S rRNA sequence for `organism` from NCBI Nucleotide.
+
+    Returns (accession, sequence) or (None, reason). Cached for a day so
+    repeated runs on the same candidate list do not re-query NCBI.
+    """
+    organism = str(organism).strip()
+
+    if not organism:
+        return None, "no name given"
+
+    shared = {"tool": NCBI_TOOL_NAME}
+
+    if email:
+        shared["email"] = email
+    if api_key:
+        shared["api_key"] = api_key
+
+    term = (
+        f'"{organism}"[Organism] AND '
+        f'("16S ribosomal RNA"[Title] OR "16S rRNA"[Title]) AND '
+        f"{SIXTEEN_S_MIN_LEN}:{SIXTEEN_S_MAX_LEN}[SLEN]"
+    )
+
+    try:
+        payload = json.loads(
+            _eutils_get(
+                "esearch.fcgi",
+                {
+                    **shared,
+                    "db": "nucleotide",
+                    "term": term,
+                    "retmode": "json",
+                    "retmax": "1",
+                    "sort": "relevance",
+                },
+            )
+        )
+    except Exception as error:
+        return None, f"NCBI search failed ({type(error).__name__})"
+
+    ids = payload.get("esearchresult", {}).get("idlist", [])
+
+    if not ids:
+        return None, "no 16S record found"
+
+    time.sleep(NCBI_REQUEST_INTERVAL)
+
+    try:
+        fasta = _eutils_get(
+            "efetch.fcgi",
+            {**shared, "db": "nucleotide", "id": ids[0], "rettype": "fasta", "retmode": "text"},
+        )
+    except Exception as error:
+        return None, f"NCBI fetch failed ({type(error).__name__})"
+
+    lines = [line.strip() for line in fasta.splitlines() if line.strip()]
+
+    if not lines or not lines[0].startswith(">"):
+        return None, "unreadable FASTA from NCBI"
+
+    accession = lines[0][1:].split()[0]
+    sequence = "".join(lines[1:]).upper()
+
+    if len(sequence) < SIXTEEN_S_MIN_LEN:
+        return None, "record shorter than expected for 16S"
+
+    return accession, sequence
+
+
+def collect_candidate_names(text, limit=12):
+    """Species names from the first column of the model's candidate table."""
+    names = []
+
+    for line in str(text or "").splitlines():
+        if line.count("|") < 3:
+            continue
+
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+
+        if len(cells) < 3:
+            continue
+        if set("".join(cells)) <= set("-: "):
+            continue
+
+        name = re.sub(r"[*_`]", "", cells[0]).strip()
+
+        if not name or name.lower() in ("bacterium name", "bacterium", "name"):
+            continue
+        # A binomial, optionally with subspecies/strain words after it.
+        if not re.match(r"^[A-Z][a-z]+ [a-z]{3,}", name):
+            continue
+        if name not in names:
+            names.append(name)
+
+    return names[:limit]
+
+
+def build_16s_tree(sequences):
+    """Neighbour-joining tree from pairwise identity. Returns (tree, newick)."""
+    from Bio import Phylo
+    from Bio.Align import PairwiseAligner
+    from Bio.Phylo.TreeConstruction import DistanceMatrix, DistanceTreeConstructor
+
+    labels = list(sequences)
+
+    aligner = PairwiseAligner()
+    aligner.mode = "global"
+    aligner.match_score = 1
+    aligner.mismatch_score = 0
+    aligner.open_gap_score = -2
+    aligner.extend_gap_score = -0.5
+
+    # Lower triangle, as DistanceMatrix expects.
+    matrix = []
+
+    for i, a in enumerate(labels):
+        row = []
+
+        for j, b in enumerate(labels[: i + 1]):
+            if i == j:
+                row.append(0.0)
+                continue
+
+            score = aligner.score(sequences[a], sequences[b])
+            identity = score / max(len(sequences[a]), len(sequences[b]))
+            row.append(round(max(0.0, 1.0 - identity), 6))
+
+        matrix.append(row)
+
+    tree = DistanceTreeConstructor().nj(DistanceMatrix(labels, matrix))
+    tree.root_at_midpoint()
+
+    # NJ can return small negative branch lengths; they are meaningless on a
+    # drawn tree and make it unreadable, so clamp them.
+    for clade in tree.find_clades():
+        if clade.branch_length and clade.branch_length < 0:
+            clade.branch_length = 0.0
+
+    handle = io.StringIO()
+    Phylo.write(tree, handle, "newick")
+
+    return tree, handle.getvalue()
+
+
+def draw_16s_tree(tree, n_taxa):
+    from Bio import Phylo
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    figure, axes = plt.subplots(figsize=(8, max(2.5, 0.55 * n_taxa)))
+    Phylo.draw(
+        tree,
+        axes=axes,
+        do_show=False,
+        show_confidence=False,
+        label_func=lambda c: c.name if c.is_terminal() else "",
+    )
+    axes.set_xlabel("substitutions per site (pairwise identity)")
+    axes.spines[["top", "right", "left"]].set_visible(False)
+    axes.set_ylabel("")
+    axes.set_yticks([])
+    figure.tight_layout()
+
+    return figure
+
+
+def render_16s_phylogeny(response_text, query_organism="", email="", api_key=""):
+    """Fetch 16S for each candidate, draw the tree, report what was missing."""
+    names = collect_candidate_names(response_text)
+
+    if query_organism.strip():
+        names = [query_organism.strip()] + [
+            n for n in names if n.lower() != query_organism.strip().lower()
+        ]
+
+    if not names:
+        st.info("No species names could be read from the candidate table.")
+        return
+
+    sequences = {}
+    status = []
+
+    progress = st.progress(0.0, text="Retrieving 16S sequences from NCBI...")
+
+    for index, name in enumerate(names, start=1):
+        accession, result = fetch_16s(name, email=email, api_key=api_key)
+
+        if accession:
+            sequences[name] = result
+            status.append({"Species": name, "16S accession": accession,
+                           "Length (bp)": len(result), "Status": "retrieved"})
+        else:
+            status.append({"Species": name, "16S accession": "-",
+                           "Length (bp)": "-", "Status": f"missing - {result}"})
+
+        progress.progress(index / len(names), text=f"Retrieving 16S sequences... ({index}/{len(names)})")
+        time.sleep(NCBI_REQUEST_INTERVAL)
+
+    progress.empty()
+
+    status_df = pd.DataFrame(status)
+    st.dataframe(status_df, use_container_width=True)
+
+    missing = status_df[status_df["Status"].str.startswith("missing")]
+
+    if not missing.empty:
+        st.warning(
+            "16S missing for: " + ", ".join(missing["Species"]) +
+            ". These are left out of the tree."
+        )
+
+    if len(sequences) < 3:
+        st.info(
+            f"{len(sequences)} sequence(s) retrieved - a tree needs at least 3 taxa, "
+            "so none is drawn."
+        )
+        return
+
+    with st.spinner(f"Aligning {len(sequences)} sequences and inferring tree..."):
+        try:
+            tree, newick = build_16s_tree(sequences)
+        except Exception as error:
+            st.error(f"Tree construction failed: {type(error).__name__}: {error}")
+            return
+
+        figure = draw_16s_tree(tree, len(sequences))
+
+    st.pyplot(figure, use_container_width=True)
+
+    st.caption(
+        "Neighbour-joining tree from pairwise 16S identity, midpoint-rooted. "
+        "Quick-look topology only - no multiple-sequence alignment, no model "
+        "selection, no bootstrap support. For a publication figure, download "
+        "the FASTA below and infer the tree with MAFFT plus IQ-TREE or RAxML."
+    )
+
+    fasta = "".join(f">{name.replace(' ', '_')}\n{seq}\n" for name, seq in sequences.items())
+
+    column_left, column_right = st.columns(2)
+
+    with column_left:
+        st.download_button(
+            "Download 16S FASTA",
+            data=fasta,
+            file_name="candidate_16S.fasta",
+            mime="text/plain",
+        )
+
+    with column_right:
+        st.download_button(
+            "Download tree (Newick)",
+            data=newick,
+            file_name="candidate_16S_nj.nwk",
+            mime="text/plain",
+        )
 
 
 def _to_markdown_table(df: pd.DataFrame) -> str:
