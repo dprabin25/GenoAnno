@@ -97,6 +97,108 @@ GENERIC_LABELS = {
 TOP_N_ROWS = 40  # cap on how many rows go into Tables 1 and 2
 
 
+# ---------------------------------------------------------------------------
+# Discriminating-row rescue for Table 1
+# ---------------------------------------------------------------------------
+#
+# Ranking Table 1 by gene count selects for gene-family EXPANSION, which is the
+# least species-specific part of a genome: in Bacteroidota the top rows are
+# always SusC/SusD/sigma-factor PUL machinery, shared across the whole phylum.
+# The genes that distinguish one species from its relatives -- secreted
+# proteases, surface layers, secretion systems, adhesins -- are almost all
+# single-copy. In the Tannerella forsythia input 85.6% of distinct CDS products
+# occur exactly once and the rank-40 cutoff sits at a count of 4, so every such
+# gene is excluded before the model sees the table.
+#
+# These two selectors rescue those rows. Both are properties of the ANNOTATION,
+# not of any particular organism, so the same code applied to any Bakta table
+# surfaces whatever that genome's characterised, virulence-associated genes are
+# -- gingipains and fimbrillins in Porphyromonas, FadA in Fusobacterium,
+# leukotoxin in Aggregatibacter. No species, gene or locus name appears here,
+# so the model is not handed a lookup table for an expected answer.
+#
+#   Selector A -- a BlastRules cross-reference. NCBI BlastRules are curated,
+#   high-specificity protein-naming rules that fire only for well-studied
+#   proteins, so the xref marks a gene the reference databases treat as
+#   diagnostically named rather than generically matched. Typically a handful
+#   of genes per genome.
+#
+#   Selector C -- a generic functional-class keyword. Terms name the CLASS of
+#   virulence-associated function (secretion system, surface layer, adhesin,
+#   toxin, motility, capsule, host-substrate-degrading enzyme), as any
+#   a-priori virulence panel would. Matching is on the product description, so
+#   organism-specific protein names are matched incidentally by their class
+#   words and never enumerated.
+#
+# Selector B from the design discussion -- "has an assigned gene symbol" -- is
+# deliberately NOT used: it admits ~10% of all CDS, mostly housekeeping genes
+# (uvrA, greA, pfkB), adding bulk without discriminating power.
+
+DISCRIMINATING_XREF_RULES = ("BlastRules",)
+
+DISCRIMINATING_KEYWORDS = (
+    "secretion system",
+    "s-layer",
+    "surface layer",
+    "adhesin",
+    "adhesion",
+    "virulence",
+    "toxin",
+    "motility",
+    "capsul",
+    "fimbri",
+    "pilus",
+    "pili",
+    "hemolysin",
+    "haemolysin",
+    "invasin",
+    "autotransporter",
+    "sialid",
+    "neuraminidase",
+    "mucinase",
+    "collagenase",
+    "hyaluronidase",
+    "gingipain",
+    "leukotoxin",
+)
+
+
+def select_discriminating_products(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows worth keeping in Table 1 regardless of how rare they are.
+
+    Returns a (Functional category, Gene count) frame, counted over the same
+    CDS rows Table 1 is built from. Returns an empty frame when the table
+    carries neither of the columns the selectors read, so a non-Bakta source
+    simply contributes nothing.
+    """
+    if "Product" not in df.columns:
+        return pd.DataFrame(columns=["Functional category", "Gene count"])
+
+    product = df["Product"].fillna("").astype(str)
+    keep = pd.Series(False, index=df.index)
+
+    # Selector A: curated protein-naming rule fired for this gene.
+    if "DbXrefs" in df.columns:
+        xrefs = df["DbXrefs"].fillna("").astype(str)
+        for rule in DISCRIMINATING_XREF_RULES:
+            keep = keep | xrefs.str.contains(rule, case=False, regex=False)
+
+    # Selector C: product description names a virulence-associated class.
+    for keyword in DISCRIMINATING_KEYWORDS:
+        keep = keep | product.str.contains(keyword, case=False, regex=False)
+
+    selected = product[keep & (product.str.strip() != "")]
+
+    if selected.empty:
+        return pd.DataFrame(columns=["Functional category", "Gene count"])
+
+    return (
+        selected.value_counts()
+        .rename_axis("Functional category")
+        .reset_index(name="Gene count")
+    )
+
+
 def _clean_and_cap(counts: pd.DataFrame, label_col: str, top_n: int = TOP_N_ROWS):
     """Drop generic/uninformative labels, sort by count, keep the top N.
 
@@ -146,7 +248,41 @@ def parse_bakta_functional_categories(bakta_file):
         .rename_axis("Functional category")
         .reset_index(name="Gene count")
     )
-    return _clean_and_cap(counts, "Functional category")
+
+    trimmed, note = _clean_and_cap(counts, "Functional category")
+
+    # Add back the discriminating rows the count cutoff would have discarded.
+    rescued = select_discriminating_products(df)
+
+    if not rescued.empty:
+        already_present = set(trimmed["Functional category"])
+        rescued = rescued[
+            ~rescued["Functional category"].isin(already_present)
+            & ~rescued["Functional category"].str.strip().str.lower().isin(GENERIC_LABELS)
+        ]
+
+    if not rescued.empty:
+        trimmed = (
+            pd.concat([trimmed, rescued], ignore_index=True)
+            .sort_values(
+                by=["Gene count", "Functional category"],
+                ascending=[False, True],
+            )
+            .reset_index(drop=True)
+        )
+
+        # _clean_and_cap's note ends in ")"; extend it rather than replace it,
+        # so the table stays self-describing in the prompt.
+        note = note.rstrip()
+        note = (
+            note[:-1] if note.endswith(")") else note
+        ) + (
+            f"; plus {len(rescued)} virulence-associated categories retained "
+            "regardless of gene count, selected by curated-annotation flag or "
+            "functional-class keyword)"
+        )
+
+    return trimmed, note
 
 
 def parse_kbase_kegg_pathways(kbase_file):
