@@ -928,6 +928,9 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         # an organism to the tree would re-trigger the model call.
         st.session_state["web6_response"] = full_response
         st.session_state.setdefault("web6_added_organisms", [])
+        # A new analysis means new candidates, so any tree already on screen
+        # belongs to the previous run; require Generate again.
+        st.session_state["web6_tree_built"] = False
 
 
 # ---------------------------------------------------------------------------
@@ -962,76 +965,118 @@ if st.session_state.get("web6_response"):
     st.divider()
     st.subheader("16S phylogeny of the candidate species")
 
-    build_tree = st.toggle(
-        "Build the tree (queries NCBI for one 16S sequence per species)",
-        value=True,
-        key="build_16s_tree",
+    # The tree is built on request, not automatically. Species come from the
+    # candidate table; the user can add their own organisms to that list; only
+    # then does pressing Generate query NCBI. Changing the list clears the
+    # tree, so what is on screen always matches the list above it and no
+    # network call happens without an explicit click.
+    candidate_names = collect_candidate_names(stored_response)
+    tree_taxa = added_organisms + [
+        n for n in candidate_names
+        if n.lower() not in (a.lower() for a in added_organisms)
+    ]
+
+    if candidate_names:
+        st.markdown("**Species read from the candidate table**")
+        st.write(", ".join(candidate_names))
+    else:
+        st.warning(
+            "No species names could be read from the candidate table. The "
+            "parser accepts pipe-delimited or tab-separated tables and lines "
+            "beginning with a binomial."
+        )
+
+    st.markdown("**Add your own organisms (optional)**")
+    st.caption(
+        "Added organisms are treated like candidates: one 16S sequence each "
+        "from NCBI. The model is not queried again and the candidate table "
+        "above does not change."
     )
 
-    if build_tree:
-        with st.expander("NCBI options", expanded=False):
-            ncbi_email = st.text_input(
-                "Contact email (recommended)",
-                value="",
-                key="ncbi_email",
-                help="NCBI asks programmatic users to identify themselves. "
-                     "Sent only to NCBI, as the E-utilities 'email' parameter.",
-            )
-            ncbi_api_key = st.text_input(
-                "API key (optional, raises the rate limit)",
-                value="",
-                type="password",
-                key="ncbi_api_key",
-            )
+    # The text box key carries a counter so that incrementing it after an add
+    # gives a brand-new, empty widget. Setting a widget's value directly after
+    # it has been created is not allowed, and st.form is not usable here
+    # because the host app wraps Streamlit's callables.
+    add_counter = st.session_state.setdefault("web6_add_counter", 0)
+    add_column, add_button_column = st.columns([4, 1])
 
+    with add_column:
+        st.text_input(
+            "Organism name",
+            value="",
+            placeholder="e.g. Tannerella forsythia",
+            key=f"web6_organism_to_add_{add_counter}",
+            label_visibility="collapsed",
+        )
+
+    with add_button_column:
+        add_clicked = st.button(
+            "Add", key="web6_add_organism", use_container_width=True
+        )
+
+    if add_clicked:
+        typed = st.session_state.get(f"web6_organism_to_add_{add_counter}", "")
+        name = " ".join(str(typed).split())
+
+        if not name:
+            st.warning("Enter an organism name first.")
+        elif name.lower() in (o.lower() for o in tree_taxa):
+            st.info(f"{name} is already in the list.")
+        else:
+            st.session_state["web6_added_organisms"] = added_organisms + [name]
+            st.session_state["web6_add_counter"] = add_counter + 1
+            # The list changed, so any tree on screen is now out of date.
+            st.session_state["web6_tree_built"] = False
+            st.rerun()
+
+    if added_organisms:
+        st.success("Added: " + ", ".join(added_organisms))
+
+        if st.button("Clear added organisms", key="web6_clear_added"):
+            st.session_state["web6_added_organisms"] = []
+            st.session_state["web6_tree_built"] = False
+            st.rerun()
+
+    with st.expander("NCBI options", expanded=False):
+        ncbi_email = st.text_input(
+            "Contact email (recommended)",
+            value="",
+            key="ncbi_email",
+            help="NCBI asks programmatic users to identify themselves. "
+                 "Sent only to NCBI, as the E-utilities 'email' parameter.",
+        )
+        ncbi_api_key = st.text_input(
+            "API key (optional, raises the rate limit)",
+            value="",
+            type="password",
+            key="ncbi_api_key",
+        )
+
+    tree_ready = st.session_state.get("web6_tree_built", False)
+
+    st.caption(
+        f"{len(tree_taxa)} species will be placed in the tree"
+        + (" - at least 3 are needed." if len(tree_taxa) < 3 else ".")
+    )
+
+    if st.button(
+        "Regenerate tree" if tree_ready else "Generate tree",
+        type="primary",
+        key="web6_generate_tree",
+        disabled=len(tree_taxa) < 3,
+    ):
+        st.session_state["web6_tree_built"] = True
+        st.rerun()
+
+    if tree_ready:
         render_16s_phylogeny(
             stored_response,
             extra_organisms=added_organisms,
             email=ncbi_email,
             api_key=ncbi_api_key,
         )
-
-        st.markdown("**Add an organism to the tree**")
-        st.caption(
-            "Fetches that organism's 16S from NCBI and redraws the tree. The "
-            "model is not queried again and the candidate table is unchanged."
+    else:
+        st.info(
+            "Tree not generated yet. Add any organisms you want included, "
+            "then press Generate tree."
         )
-
-        if added_organisms:
-            st.success("Added to the tree: " + ", ".join(added_organisms))
-
-            if st.button("Remove added organisms", key="clear_added_organisms"):
-                st.session_state["web6_added_organisms"] = []
-                st.rerun()
-
-        # A form rather than a bare text_input plus button: the two widgets
-        # submit together, Enter works as well as the button, and
-        # clear_on_submit empties the box once the name has been taken. With
-        # separate widgets the typed value and the click land on different
-        # script runs, which is why a name could appear to be ignored.
-        with st.form("add_organism_form", clear_on_submit=True):
-            form_columns = st.columns([4, 1])
-
-            with form_columns[0]:
-                organism_to_add = st.text_input(
-                    "Organism name",
-                    value="",
-                    placeholder="e.g. Tannerella forsythia",
-                    label_visibility="collapsed",
-                )
-
-            with form_columns[1]:
-                submitted = st.form_submit_button(
-                    "Add to tree", use_container_width=True
-                )
-
-        if submitted:
-            name = " ".join(str(organism_to_add).split())
-
-            if not name:
-                st.warning("Enter an organism name first.")
-            elif name.lower() in (o.lower() for o in added_organisms):
-                st.info(f"{name} is already in the tree.")
-            else:
-                st.session_state["web6_added_organisms"] = added_organisms + [name]
-                st.rerun()
