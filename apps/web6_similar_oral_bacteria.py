@@ -759,17 +759,15 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
 # discriminating)" and "lactate dehydrogenase" therefore count as one shared
 # element, and the source table of each element is known.
 #
-# Items that match no row are "ungrounded" -- the model cited something that
-# is not in the input. They are excluded by default (the prompt's GROUNDING
-# RULE forbids them) and their number is reported, so a reviewer can see how
-# much of the overlap rests on items the tables do not support.
+# Items that match no row are kept as written: every category the candidate
+# table cites is shown. Ticking "Only items that match a table row" drops the
+# ones that break the prompt's GROUNDING RULE.
 #
-# Three views of the same grounded evidence, each with its own job:
-#   heatmap  - WHICH items each candidate shares (every name, any number of
-#              candidates); the main-figure view when the functions matter.
-#   UpSet    - HOW MUCH overlap there is, every exclusive intersection drawn
-#              explicitly (Lex et al., 2014); members go in the CSV.
-#   Venn     - counts for 2-3 chosen candidates, with optional callouts.
+# Two views of the same items, side by side:
+#   heatmap - WHICH categories each candidate shares, every one named, any
+#             number of candidates.
+#   Venn    - HOW MANY categories each combination of candidates shares or
+#             holds alone, as counts, for up to five candidates.
 
 # Brown, blue and orange/gold are reserved in this project's figures for the
 # query bacterium, immune cells and proteins; greens and red carry audit
@@ -795,8 +793,7 @@ VENN_STROKES = ("#5d4a9e", "#048a9c", "#d0679b", "#8a8f2e", "#9e6fd6")
 # Secondary encoding. Under protanopia the teal and rose fills stay apart on
 # large areas, but small markers converge. Each candidate therefore also has
 # a shape (circle, square, triangle, diamond, inverted triangle), drawn beside
-# its species title and in every callout header, so identity never rests on
-# colour alone.
+# its species title, so identity never rests on colour alone.
 VENN_MARKERS = ("o", "s", "^", "D", "v")
 
 # Neutral inks shared by every evidence figure.
@@ -804,7 +801,6 @@ INK = "#222222"
 INK_MUTED = "#555555"
 MARK_DARK = "#3d3d3d"
 MARK_EMPTY = "#ececec"          # absent heatmap cell (present vs absent 9.2:1)
-MARK_ABSENT_DOT = "#cccccc"     # absent UpSet dot; stays visible on row bands
 RULE = "#b8b8b8"
 
 FIGURE_STYLE = {
@@ -814,15 +810,6 @@ FIGURE_STYLE = {
     "svg.fonttype": "none",
     "pdf.fonttype": 42,
 }
-
-# Row groups for the heatmap, in display order.
-SOURCE_GROUPS = (
-    (4, "Metabolic pathways (Table 4)"),
-    (3, "Protein function families (Table 3)"),
-    (2, "KEGG-hit descriptions (Table 2)"),
-    (1, "Functional categories (Table 1)"),
-    (None, "Cited, but not a verbatim row in Tables 1-4"),
-)
 
 TABLE_LABELS = {
     1: "Table 1 - Functional categories",
@@ -1122,12 +1109,11 @@ def _venn_geometry(n_sets):
     """Region anchors and title anchors for an n-set Venn.
 
     Rasterises the ellipses, labels every pixel with the bitmask of the sets
-    containing it, and anchors each region's text at its deepest point (the
+    containing it, and anchors each region's count at its deepest point (the
     pixel farthest from the region's edge, found by eroding all regions at
-    once). For each region it also returns the inscribed radius and the
-    horizontal and vertical extent through the anchor, which decide how large
-    the count can be and how many item names fit under it. Raises if any of
-    the 2^n - 1 regions is missing, so a wrong layout is never drawn.
+    once). The depth is returned as the region's inscribed radius, which
+    sizes the count so it fits small regions. Raises if any of the 2^n - 1
+    regions is missing, so a wrong layout is never drawn.
     """
     import numpy as np
 
@@ -1168,42 +1154,9 @@ def _venn_geometry(n_sets):
         pick = np.argmin((rows - rows.mean()) ** 2 + (cols - cols.mean()) ** 2)
         row, col = int(rows[pick]), int(cols[pick])
 
-        # Room for text at the anchor: the region's horizontal and vertical
-        # extent through that point.
-        line = label[row] == mask
-        left = col
-        while left > 0 and line[left - 1]:
-            left -= 1
-        right = col
-        while right < line.size - 1 and line[right + 1]:
-            right += 1
-        column = label[:, col] == mask
-        low = row
-        while low > 0 and column[low - 1]:
-            low -= 1
-        high = row
-        while high < column.size - 1 and column[high + 1]:
-            high += 1
-
-        # Row-by-row extent of the region through the anchor column, so the
-        # text block can be sized to the narrowest row it actually covers.
-        profile = []
-        for r in range(low, high + 1):
-            run = label[r] == mask
-            l = r_ = col
-            while l > 0 and run[l - 1]:
-                l -= 1
-            while r_ < run.size - 1 and run[r_ + 1]:
-                r_ += 1
-            profile.append((float(ys[r]), float(xs[l] - pixel / 2),
-                            float(xs[r_] + pixel / 2)))
-
         regions[mask] = {
             "x": float(xs[col]), "y": float(ys[row]),
             "radius": float(deepest * pixel),
-            "width": float((right - left + 1) * pixel),
-            "height": float((high - low + 1) * pixel),
-            "profile": tuple(profile),
         }
 
     if n_sets in _VENN_HAND_PLACED:
@@ -1239,69 +1192,16 @@ def _venn_geometry(n_sets):
 
 _VENN_COUNT_SIZE = 10.5      # pt, count in a region with room for it
 _VENN_MIN_COUNT_SIZE = 5.5   # pt, smallest count in a cramped region
-_VENN_ITEM_SIZE = 6.5        # pt, item names under the count
-_VENN_ITEM_SPACING = 1.25
 INK_ZERO = "#a3a3a3"         # empty regions recede; populated ones carry the eye
 
 
-def _band_width(room, centre_x, top, bottom):
-    """Widest text, centred on centre_x, that stays inside the region for
-    every row between bottom and top (data units). 0 if the band leaves the
-    region vertically."""
-    rows = [(left, right) for y, left, right in room["profile"]
-            if bottom <= y <= top]
-    profile_low = room["profile"][0][0]
-    profile_high = room["profile"][-1][0]
+def draw_evidence_venn(named_sets):
+    """Draw an n-set Venn (2-5): the count of categories held by exactly each
+    combination of candidates.
 
-    if not rows or bottom < profile_low or top > profile_high:
-        return 0.0
-
-    return 2 * min(min(centre_x - left, right - centre_x) for left, right in rows)
-
-
-_VENN_INDEX_SIZE = 7          # pt, item numbers under a region's count
-_VENN_KEY_SIZE = 7.5          # pt, the numbered key beside the diagram
-
-
-def _layout_region_indices(numbers, room, count_size, points_per_unit):
-    """Item numbers for one region, wrapped to the room the region has.
-
-    Numbers are short, so they fit even thin petals; the width is measured
-    across the block's full height. Returns ([], count height) when not even
-    one line fits, leaving the count alone (the key and heatmap still list
-    the items)."""
-    import textwrap
-
-    unit = 1.0 / points_per_unit
-    line = _VENN_INDEX_SIZE * 1.25 * unit
-    count_height = count_size * 1.3 * unit
-    char_width = 0.56 * _VENN_INDEX_SIZE * unit
-    text = ", ".join(str(n) for n in sorted(numbers))
-
-    for n_lines in range(1, max(1, int(room["height"] / line)) + 1):
-        height = count_height + n_lines * line
-        top = room["y"] + height / 2
-        chars = int(_band_width(room, room["x"], top, top - height) * 0.9 / char_width)
-
-        if chars < 1:
-            continue
-
-        lines = textwrap.wrap(text, width=max(chars, 2), break_long_words=False)
-        if len(lines) <= n_lines and all(len(l) <= chars for l in lines):
-            return lines, count_height + len(lines) * line
-
-    return [], count_height
-
-
-def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
-    """Draw an n-set Venn (2-5) of exclusive-region counts.
-
-    Each region shows its count; with show_items it also shows the numbers
-    of the items it holds, and a numbered key beside the diagram gives their
-    names. The numbers are the heatmap's row numbers (numbers maps element
-    key -> number), so the two figures can be read against each other.
-    Empty regions are drawn in a light grey so the populated ones carry the
-    eye. Returns (figure, {"svg", "pdf", "png": bytes}).
+    Overlaps show what candidates share, the single-candidate regions what
+    each holds alone. Empty regions are drawn in a light grey so the
+    populated ones carry the eye. Returns (figure, {"svg", "pdf", "png"}).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1312,15 +1212,9 @@ def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
     n_sets = len(names)
     geometry = _venn_geometry(n_sets)
     regions = venn_regions(named_sets)
-    show_items = bool(show_items and labels)
-
-    if show_items and not numbers:
-        ordered = sorted(set().union(*named_sets.values()),
-                         key=lambda k: labels[k][0].lower())
-        numbers = {k: i for i, k in enumerate(ordered, start=1)}
 
     (bx_low, bx_high), (by_low, by_high) = geometry["bounds"]
-    target_width_in = {2: 5.0, 3: 5.0, 4: 6.4, 5: 7.6}[n_sets]
+    target_width_in = {2: 4.4, 3: 4.4, 4: 5.6, 5: 6.6}[n_sets]
     points_per_unit = 72 * target_width_in / (bx_high - bx_low + 1.6)
     unit = 1.0 / points_per_unit
 
@@ -1342,30 +1236,6 @@ def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
     y_low = min([by_low] + [b[1] for b in title_blocks]) - 0.08
     y_high = max([by_high] + [b[1] + title_height for b in title_blocks]) + 0.08
 
-    # ---- numbered key, in columns to the right of the diagram
-    key_entries = []
-    key_columns = []
-    if show_items:
-        present = sorted(set().union(*named_sets.values()), key=lambda k: numbers[k])
-        key_entries = [(numbers[k], _fit_text(labels[k][0], 56)) for k in present]
-
-        key_line = _VENN_KEY_SIZE * 1.45 * unit
-        heading = _VENN_KEY_SIZE * 2.0 * unit
-        rows_per_column = max(1, int((y_high - y_low - heading) / key_line))
-        number_width = len(str(max(n for n, _ in key_entries))) * 0.6 * _VENN_KEY_SIZE * unit
-        gap = 4 * unit
-        column_x = x_high + 0.3
-
-        for start in range(0, len(key_entries), rows_per_column):
-            chunk = key_entries[start:start + rows_per_column]
-            text_width = max(len(t) for _, t in chunk) * 0.55 * _VENN_KEY_SIZE * unit
-            key_columns.append((column_x, chunk))
-            column_x += number_width + gap + text_width + 0.25
-
-        key_height = heading + min(len(key_entries), rows_per_column) * key_line
-        key_top = (y_low + y_high) / 2 + key_height / 2
-        x_high = column_x
-
     fill_alpha = 0.22 if n_sets <= 3 else 0.16
 
     with plt.rc_context(FIGURE_STYLE):
@@ -1383,30 +1253,13 @@ def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
                                    zorder=2))
 
         for mask, room in geometry["regions"].items():
-            members = regions.get(mask, [])
-            count_size = max(_VENN_MIN_COUNT_SIZE,
-                             min(_VENN_COUNT_SIZE, room["radius"] * points_per_unit * 0.8))
-
-            if not members:
-                axes.text(room["x"], room["y"], "0", ha="center", va="center",
-                          fontsize=count_size, color=INK_ZERO, zorder=4)
-                continue
-
-            lines, block_height = ([], count_size * 1.3 * unit)
-            if show_items:
-                lines, block_height = _layout_region_indices(
-                    [numbers[m] for m in members], room, count_size,
-                    points_per_unit)
-
-            top = room["y"] + block_height / 2
-            axes.text(room["x"], top, str(len(members)), ha="center", va="top",
-                      fontsize=count_size, fontweight="bold", color=INK,
-                      zorder=4)
-            if lines:
-                axes.text(room["x"], top - count_size * 1.3 * unit,
-                          "\n".join(lines), ha="center", va="top",
-                          fontsize=_VENN_INDEX_SIZE, linespacing=1.25,
-                          color=INK_MUTED, zorder=4)
+            count = len(regions.get(mask, []))
+            size = max(_VENN_MIN_COUNT_SIZE,
+                       min(_VENN_COUNT_SIZE, room["radius"] * points_per_unit * 0.8))
+            axes.text(room["x"], room["y"], str(count), ha="center",
+                      va="center", fontsize=size,
+                      fontweight="bold" if count else "normal",
+                      color=INK if count else INK_ZERO, zorder=4)
 
         # Title block: italic name, then marker (shape + colour) and n.
         for index, (name, (left, bottom, width, ha)) in enumerate(
@@ -1431,26 +1284,6 @@ def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
             axes.text(pair_left + 10 * unit, line_top, count_text, ha="left",
                       va="top", fontsize=count_line_size, color=INK_MUTED,
                       zorder=4)
-
-        # Key: bold number, then the item's full name.
-        if key_columns:
-            key_line = _VENN_KEY_SIZE * 1.45 * unit
-            number_width = len(str(max(n for n, _ in key_entries))) * 0.6 \
-                * _VENN_KEY_SIZE * unit
-            axes.text(key_columns[0][0], key_top, "Items", ha="left", va="top",
-                      fontsize=_VENN_KEY_SIZE + 0.5, fontweight="bold",
-                      color=INK)
-
-            for column_x, chunk in key_columns:
-                y = key_top - _VENN_KEY_SIZE * 2.0 * unit
-                for number, text in chunk:
-                    axes.text(column_x + number_width, y, str(number),
-                              ha="right", va="top", fontsize=_VENN_KEY_SIZE,
-                              fontweight="bold", color=INK_MUTED)
-                    axes.text(column_x + number_width + 4 * unit, y, text,
-                              ha="left", va="top", fontsize=_VENN_KEY_SIZE,
-                              color=INK)
-                    y -= key_line
 
         axes.set_xlim(x_low, x_high)
         axes.set_ylim(y_low, y_high)
@@ -1484,31 +1317,29 @@ def export_figure(figure):
 
 
 def evidence_matrix(filtered, names):
-    """Presence/absence of every cited item across candidates.
+    """Presence/absence of every cited category across candidates.
 
-    One row per item, ordered for display: by source group (pathways first),
-    then by how many candidates cite it, then by presence pattern in
-    candidate order -- so items shared by the same candidates sit together --
-    then alphabetically.
+    One row per category, ordered for display: by how many candidates cite
+    it, then by presence pattern in candidate order -- so categories shared
+    by the same candidates sit together -- then alphabetically. Rows are
+    numbered in that order.
     """
     labels = {}
     for items in filtered.values():
         for key, value in items.items():
             labels.setdefault(key, value)
 
-    group_rank = {table: i for i, (table, _) in enumerate(SOURCE_GROUPS)}
     rows = []
 
     for key, (label, table_number) in labels.items():
         present = [key in filtered[name] for name in names]
         rows.append({
             "key": key,
-            "Item": label,
+            "Category": label,
             "Table": table_number,
             "Source": _table_tag(table_number),
             **dict(zip(names, present)),
             "Cited by": sum(present),
-            "_group": group_rank.get(table_number, len(SOURCE_GROUPS)),
             "_pattern": tuple(not p for p in present),
         })
 
@@ -1516,13 +1347,10 @@ def evidence_matrix(filtered, names):
         return pd.DataFrame()
 
     frame = pd.DataFrame(rows)
-    frame["_label"] = frame["Item"].str.lower()
-    frame = frame.sort_values(["_group", "Cited by", "_pattern", "_label"],
-                              ascending=[True, False, True, True])
+    frame["_label"] = frame["Category"].str.lower()
+    frame = frame.sort_values(["Cited by", "_pattern", "_label"],
+                              ascending=[False, True, True])
     frame = frame.drop(columns=["_pattern", "_label"]).reset_index(drop=True)
-
-    # One number per item, in heatmap row order. The Venn regions cite items
-    # by these numbers, so a reader can go from a region straight to its rows.
     frame.insert(0, "No.", range(1, len(frame) + 1))
     return frame
 
@@ -1533,11 +1361,13 @@ def _fit_text(text, max_chars):
 
 
 def draw_evidence_heatmap(matrix, names):
-    """Binary presence/absence heatmap, rows grouped by source table.
+    """Binary presence/absence heatmap: categories down, candidates across.
 
-    Drawn in cell units (1 cell = 1 data unit) on an axes that fills the
-    figure, with the figure sized from the row/column counts, so cells stay
-    square and text sizes stay fixed however many rows there are.
+    Each row reads "No.  Category" then one cell per candidate and the
+    "Shared by" fraction. Drawn in cell units (1 cell = 1 data unit) on an
+    axes that fills the figure, with the figure sized from the row/column
+    counts, so cells stay square and text sizes stay fixed however many rows
+    there are.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1547,27 +1377,22 @@ def draw_evidence_heatmap(matrix, names):
     cell_in = 0.19
     ppu = cell_in * 72                          # points per cell
     label_chars = 72
-    row_font, head_font, group_font = 7, 7.5, 7
+    row_font, head_font = 7, 7.5
     gap = 2 / ppu                               # 2 pt surface gap between cells
+    heading_rows = 1.4
 
-    # Layout rows: a header slot before each group, then its items.
-    slots = []
-    for table_number, group_label in SOURCE_GROUPS:
-        group = matrix[matrix["Table"].isna()] if table_number is None \
-            else matrix[matrix["Table"] == table_number]
-        if group.empty:
-            continue
-        slots.append(("header", f"{group_label}  ·  {len(group)}"))
-        slots.extend(("item", row) for _, row in group.iterrows())
-
-    n_cols = len(names)
-    longest = max(len(_fit_text(r["Item"], label_chars)) for _, r in matrix.iterrows())
-    label_units = longest * 0.52 * row_font / ppu + 1.55
-    column_head_units = max(len(abbreviate_species(n)) for n in names) * 0.52 * head_font / ppu * 0.87 + 1.0
+    n_rows, n_cols = len(matrix), len(names)
+    labels = [_fit_text(c, label_chars) for c in matrix["Category"]]
+    number_units = len(str(n_rows)) * 0.6 * row_font / ppu
+    label_units = max(len(l) for l in labels) * 0.52 * row_font / ppu
+    left_units = number_units + 0.45 + label_units + 1.0
+    column_head_units = max(len(abbreviate_species(n)) for n in names) \
+        * 0.52 * head_font / ppu * 0.87 + 1.0
     count_units = 2.2
 
-    x_low, x_high = -label_units, n_cols + count_units
-    y_top, y_bottom = -column_head_units, len(slots) + 0.4
+    x_low, x_high = -left_units, n_cols + count_units
+    y_top, y_bottom = -column_head_units, heading_rows + n_rows + 0.4
+    number_right = x_low + 0.15 + number_units
 
     with plt.rc_context(FIGURE_STYLE):
         figure = plt.figure(figsize=((x_high - x_low) * cell_in,
@@ -1583,31 +1408,30 @@ def draw_evidence_heatmap(matrix, names):
                   rotation_mode="anchor", ha="left", va="bottom",
                   fontsize=row_font, color=INK_MUTED)
 
-        for y, (kind, payload) in enumerate(slots):
-            if kind == "header":
-                axes.text(x_low + 0.15, y + 0.62, payload, ha="left",
-                          va="center", fontsize=group_font, fontweight="bold",
-                          color=INK)
-                axes.plot([x_low + 0.15, n_cols + count_units - 0.2],
-                          [y + 0.98, y + 0.98], color=RULE, linewidth=0.5)
-                continue
+        axes.text(x_low + 0.15, 0.62, "Categories", ha="left", va="center",
+                  fontsize=head_font, fontweight="bold", color=INK)
+        axes.plot([x_low + 0.15, n_cols + count_units - 0.2], [1.0, 1.0],
+                  color=RULE, linewidth=0.5)
 
-            axes.text(-1.25, y + 0.5, _fit_text(payload["Item"], label_chars),
-                      ha="right", va="center", fontsize=row_font, color=INK)
-            axes.text(-0.3, y + 0.5, str(payload["No."]), ha="right",
+        for i, (_, row) in enumerate(matrix.iterrows()):
+            y = heading_rows + i
+
+            axes.text(number_right, y + 0.5, str(row["No."]), ha="right",
                       va="center", fontsize=row_font, fontweight="bold",
                       color=INK_MUTED)
+            axes.text(number_right + 0.45, y + 0.5, labels[i], ha="left",
+                      va="center", fontsize=row_font, color=INK)
 
             for col, name in enumerate(names):
                 axes.add_patch(Rectangle(
                     (col + gap / 2, y + gap / 2), 1 - gap, 1 - gap,
-                    facecolor=MARK_DARK if payload[name] else MARK_EMPTY,
+                    facecolor=MARK_DARK if row[name] else MARK_EMPTY,
                     edgecolor="none",
                 ))
 
-            axes.text(n_cols + 0.45, y + 0.5,
-                      f"{payload['Cited by']}/{n_cols}", ha="left",
-                      va="center", fontsize=row_font, color=INK_MUTED)
+            axes.text(n_cols + 0.45, y + 0.5, f"{row['Cited by']}/{n_cols}",
+                      ha="left", va="center", fontsize=row_font,
+                      color=INK_MUTED)
 
         axes.set_xlim(x_low, x_high)
         axes.set_ylim(y_bottom, y_top)
@@ -1616,115 +1440,6 @@ def draw_evidence_heatmap(matrix, names):
         exports = export_figure(figure)
 
     return figure, exports
-
-
-def draw_evidence_upset(filtered, names):
-    """UpSet plot of exclusive intersections across all candidates.
-
-    Top: one bar per non-empty intersection, largest first. Below: the dot
-    matrix -- filled, joined dots are the candidates that make up the
-    intersection. Left: total items cited per candidate.
-    Returns (figure, exports, intersections) where intersections is a list of
-    (mask, member keys) in plotted order.
-    """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    named_sets = {name: set(filtered[name]) for name in names}
-    regions = venn_regions(named_sets)
-    intersections = sorted(
-        regions.items(),
-        key=lambda kv: (-len(kv[1]), -bin(kv[0]).count("1"), kv[0]),
-    )
-
-    n_int, n_sets = len(intersections), len(names)
-    col_in, row_in = 0.30, 0.26
-    bar_in, set_bar_in, name_in = 1.6, 0.95, 1.15
-    margin = 0.15
-
-    matrix_w = n_int * col_in
-    matrix_h = n_sets * row_in
-    width = margin + set_bar_in + name_in + matrix_w + margin
-    height = margin + matrix_h + 0.12 + bar_in + margin
-
-    def box(left, bottom, w, h):
-        return [left / width, bottom / height, w / width, h / height]
-
-    matrix_left = margin + set_bar_in + name_in
-    max_bar = max(len(m) for _, m in intersections)
-    max_set = max(len(s) for s in named_sets.values()) or 1
-
-    with plt.rc_context(FIGURE_STYLE):
-        figure = plt.figure(figsize=(width, height))
-        ax_bar = figure.add_axes(box(matrix_left, margin + matrix_h + 0.12,
-                                     matrix_w, bar_in))
-        ax_mat = figure.add_axes(box(matrix_left, margin, matrix_w, matrix_h))
-        ax_set = figure.add_axes(box(margin, margin, set_bar_in, matrix_h))
-
-        xs = list(range(n_int))
-
-        # Intersection sizes.
-        sizes = [len(m) for _, m in intersections]
-        ax_bar.bar(xs, sizes, width=0.6, color=MARK_DARK, linewidth=0)
-        for x, size in zip(xs, sizes):
-            ax_bar.text(x, size + max_bar * 0.02, str(size), ha="center",
-                        va="bottom", fontsize=7, color=INK)
-        ax_bar.set_xlim(-0.5, n_int - 0.5)
-        ax_bar.set_ylim(0, max_bar * 1.15)
-        ax_bar.set_xticks([])
-        # Every bar is labelled with its value, so a tick axis would only
-        # repeat it; the axis title stays to say what the bars count.
-        ax_bar.set_yticks([])
-        ax_bar.set_ylabel("Items in intersection", fontsize=8, color=INK)
-        for side in ("top", "right", "left"):
-            ax_bar.spines[side].set_visible(False)
-        ax_bar.spines["bottom"].set_linewidth(0.5)
-        ax_bar.spines["bottom"].set_color(RULE)
-
-        # Dot matrix; candidate order top to bottom.
-        for row in range(n_sets):
-            y = n_sets - 1 - row
-            if row % 2 == 0:
-                ax_mat.axhspan(y - 0.5, y + 0.5, color="#f5f5f5", linewidth=0,
-                               zorder=0)
-            ax_mat.text(-0.65, y, abbreviate_species(names[row]), ha="right",
-                        va="center", fontsize=8, fontstyle="italic", color=INK)
-
-        for x, (mask, _) in enumerate(intersections):
-            members = [n_sets - 1 - i for i in range(n_sets) if mask >> i & 1]
-            ax_mat.scatter([x] * n_sets, range(n_sets), s=30, color=MARK_ABSENT_DOT,
-                           linewidths=0, zorder=1)
-            if len(members) > 1:
-                ax_mat.plot([x, x], [min(members), max(members)],
-                            color=MARK_DARK, linewidth=1.6, zorder=2)
-            ax_mat.scatter([x] * len(members), members, s=30, color=MARK_DARK,
-                           linewidths=0, zorder=3)
-
-        ax_mat.set_xlim(-0.5, n_int - 0.5)
-        ax_mat.set_ylim(-0.5, n_sets - 0.5)
-        ax_mat.axis("off")
-
-        # Set sizes, growing leftwards towards the names.
-        set_sizes = [len(named_sets[n]) for n in names]
-        ys = [n_sets - 1 - i for i in range(n_sets)]
-        ax_set.barh(ys, set_sizes, height=0.55, color=MARK_DARK, linewidth=0)
-        for y, size in zip(ys, set_sizes):
-            ax_set.text(size + max_set * 0.04, y, str(size), ha="right",
-                        va="center", fontsize=7, color=INK)
-        ax_set.set_xlim(max_set * 1.3, 0)
-        ax_set.set_ylim(-0.5, n_sets - 0.5)
-        ax_set.set_yticks([])
-        ax_set.set_xticks([])
-        ax_set.set_xlabel("Items cited", fontsize=8, color=INK)
-        for side in ("top", "left", "bottom"):
-            ax_set.spines[side].set_visible(False)
-        ax_set.spines["right"].set_linewidth(0.5)
-        ax_set.spines["right"].set_color(RULE)
-
-        exports = export_figure(figure)
-
-    return figure, exports, intersections
 
 
 def _figure_downloads(exports, stem, csv_label, csv_frame, csv_name):
@@ -1749,7 +1464,7 @@ def _table_tag(table_number):
 
 
 def render_shared_evidence(response_text, table_rows):
-    """Heatmap, UpSet and Venn views of the evidence the candidates share."""
+    """Heatmap and Venn, side by side, of the categories candidates share."""
     import matplotlib.pyplot as plt
 
     evidence = collect_candidate_evidence(response_text, table_rows)
@@ -1764,7 +1479,7 @@ def render_shared_evidence(response_text, table_rows):
     if not table_rows:
         st.warning(
             "The processed tables from this run are not available, so cited "
-            "items cannot be matched to their rows. Run the analysis again."
+            "categories cannot be matched to their rows. Run the analysis again."
         )
         return
 
@@ -1786,180 +1501,89 @@ def render_shared_evidence(response_text, table_rows):
             "Only items that match a table row",
             value=False,
             key="web6_venn_grounded_only",
-            help="By default every pathway or item the candidate table cites "
-                 "is shown. Items that are not a verbatim row of Tables 1-4 "
-                 "break the prompt's grounding rule and are grouped separately "
-                 "in the heatmap; tick this to drop them from every view.",
+            help="By default every category the candidate table cites is "
+                 "shown. Tick this to drop categories that are not a verbatim "
+                 "row of Tables 1-4, which break the prompt's grounding rule.",
         )
 
     filtered = filter_evidence(evidence, set(tables), grounded_only)
-    ungrounded = {
-        name: sum(1 for value in items.values() if value[1] is None)
-        for name, items in evidence.items()
-    }
-
-    st.caption(
-        "Every item is a Table 1-4 row of the query genome that a candidate's "
-        "evidence cell cites as shared, so all items are present in the query "
-        "genome by construction and it is not drawn as a column."
-        + (
-            " Cited items matching no table row: "
-            + ", ".join(f"{abbreviate_species(n)} {c}" for n, c in ungrounded.items() if c)
-            + (" (excluded)." if grounded_only else " (included).")
-            if any(ungrounded.values()) else ""
-        )
-    )
-
     matrix = evidence_matrix(filtered, names)
 
     if matrix.empty:
-        st.info("No cited items remain under the current filters.")
+        st.info("No cited categories remain under the current filters.")
         return
 
-    heatmap_tab, upset_tab, venn_tab = st.tabs(["Heatmap", "UpSet", "Venn"])
-
-    # ---- Heatmap: which items, across every candidate
-    with heatmap_tab:
-        figure, exports = draw_evidence_heatmap(matrix, names)
-        st.pyplot(figure, use_container_width=False)
-        plt.close(figure)
-
-        st.caption(
-            "Filled cell = the candidate's evidence cell cites that row. Rows "
-            "are grouped by source table, then ordered by how many candidates "
-            "share them; candidates are in the model's confidence order. The "
-            "bold row numbers are the ones the Venn tab uses. "
-            "Labels longer than 72 characters are shortened; the CSV has them "
-            "in full."
-        )
-
-        csv = matrix[["No.", "Item", "Source"] + names + ["Cited by"]].copy()
-        csv[names] = csv[names].astype(int)
-        _figure_downloads(exports, "candidate_evidence_heatmap",
-                          "Matrix (CSV)", csv, "candidate_evidence_matrix.csv")
-
-    # ---- UpSet: how much overlap, every intersection explicit
-    with upset_tab:
-        figure, exports, intersections = draw_evidence_upset(filtered, names)
-        st.pyplot(figure, use_container_width=False)
-        plt.close(figure)
-
-        st.caption(
-            "Each bar is an exclusive intersection: items cited by exactly the "
-            "candidates marked by filled dots below it, and by no other. Bars "
-            "on the left are the total items each candidate cites."
-        )
-
-        labels = dict(zip(matrix["key"], zip(matrix["Item"], matrix["Table"])))
-        long_rows = []
-        summary_rows = []
-
-        for mask, members in intersections:
-            title = region_name(mask, names)
-            summary_rows.append({
-                "Intersection": title,
-                "Candidates": bin(mask).count("1"),
-                "Items": len(members),
-                "Members": "; ".join(labels[m][0] for m in members),
-            })
-            long_rows.extend(
-                {"Intersection": title, "Item": labels[m][0],
-                 "Source": _table_tag(labels[m][1] if pd.notna(labels[m][1]) else None)}
-                for m in members
-            )
-
-        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True,
-                     hide_index=True)
-        _figure_downloads(exports, "candidate_evidence_upset",
-                          "Members (CSV)", pd.DataFrame(long_rows),
-                          "candidate_evidence_upset_members.csv")
-
-    # ---- Venn: one set per candidate, up to five
-    with venn_tab:
-        if len(names) > VENN_MAX_SETS:
-            st.caption(
-                f"The model returned {len(names)} candidates. A Venn diagram is "
-                f"legible for at most {VENN_MAX_SETS} sets, so the top "
-                f"{VENN_MAX_SETS} by confidence are drawn; the heatmap and "
-                "UpSet tabs cover all of them."
-            )
-
-        # The key carries this result's candidate list, so a new analysis
-        # starts from its own candidates (all of them, up to five) instead of
-        # a selection remembered from a previous run.
-        chosen = st.multiselect(
-            f"Candidates in the diagram (2-{VENN_MAX_SETS})",
+    # Venn candidates: all of them when they fit; otherwise the top five by
+    # the model's confidence order, with a choice. The key carries this
+    # result's candidate list, so a new analysis starts from its own
+    # candidates instead of a selection remembered from a previous run.
+    venn_names = names[:VENN_MAX_SETS]
+    if len(names) > VENN_MAX_SETS:
+        venn_names = st.multiselect(
+            f"Candidates in the Venn diagram (2-{VENN_MAX_SETS}; the heatmap "
+            f"shows all {len(names)})",
             options=names,
             default=names[:VENN_MAX_SETS],
             max_selections=VENN_MAX_SETS,
             key="web6_venn_candidates_" + str(abs(hash(tuple(names)))),
         )
 
-        show_items = st.checkbox(
-            "Show item numbers and key",
-            value=True,
-            key="web6_venn_show_items",
-            help="Each region lists the numbers of its items under the count; "
-                 "the key beside the diagram names them. The numbers are the "
-                 "heatmap's row numbers.",
-        )
+    heatmap_column, venn_column = st.columns([1, 1])
 
-        if len(chosen) < 2:
-            st.info("Select at least two candidates.")
-            return
-
-        named_sets = {name: set(filtered[name]) for name in chosen}
-
-        if not any(named_sets.values()):
-            st.info("No cited items remain for these candidates under the current filters.")
-            return
-
-        labels = {}
-        for name in chosen:
-            for key, value in filtered[name].items():
-                labels.setdefault(key, value)
-
-        numbers = dict(zip(matrix["key"], matrix["No."]))
-        figure, exports = draw_evidence_venn(named_sets, labels, numbers,
-                                             show_items)
+    with heatmap_column:
+        figure, heatmap_exports = draw_evidence_heatmap(matrix, names)
         st.pyplot(figure, use_container_width=True)
         plt.close(figure)
 
-        st.caption(
-            "The same items as the heatmap, drawn as sets. Each bold count "
-            "is the number of items cited by exactly that combination of "
-            "candidates; the smaller numbers under it are the items' heatmap "
-            "row numbers, named in the key. Shape size is fixed and not "
-            "proportional to n."
-        )
+    with venn_column:
+        named_sets = {name: set(filtered[name]) for name in venn_names}
 
+        if len(venn_names) < 2:
+            st.info("Select at least two candidates for the Venn diagram.")
+            venn_exports = None
+        else:
+            figure, venn_exports = draw_evidence_venn(named_sets)
+            st.pyplot(figure, use_container_width=True)
+            plt.close(figure)
+
+    st.caption(
+        "Left: each filled cell is a category the candidate's evidence cell "
+        "cites as shared with the query genome; rows are ordered by how many "
+        "candidates share them, and candidates by the model's confidence. "
+        "Right: the same categories as counts - overlaps are categories the "
+        "candidates have in common, single-candidate regions are categories "
+        "only that candidate cites. Shape size is fixed and not proportional "
+        "to n."
+    )
+
+    csv = matrix[["No.", "Category", "Source"] + names + ["Cited by"]].copy()
+    csv[names] = csv[names].astype(int)
+
+    st.markdown("**Heatmap**")
+    _figure_downloads(heatmap_exports, "candidate_categories_heatmap",
+                      "Matrix (CSV)", csv, "candidate_categories_matrix.csv")
+
+    if venn_exports:
         region_rows = []
-        long_rows = []
-
         for mask, members in sorted(
             venn_regions(named_sets).items(),
             key=lambda kv: (-bin(kv[0]).count("1"), kv[0]),
         ):
-            title = region_name(mask, chosen)
-            region_rows.append({
-                "Region": title,
-                "Items": len(members),
-                "Members": "; ".join(
-                    f"{numbers[m]}. {labels[m][0]}"
-                    for m in sorted(members, key=lambda k: numbers[k])
-                ),
-            })
-            long_rows.extend(
-                {"Region": title, "No.": numbers[m], "Item": labels[m][0],
-                 "Source": _table_tag(labels[m][1])}
-                for m in sorted(members, key=lambda k: numbers[k])
+            title = region_name(mask, venn_names)
+            region_rows.extend(
+                {"Region": title, "Category": filtered_label,
+                 "Source": _table_tag(table_number)}
+                for filtered_label, table_number in sorted(
+                    (next(filtered[n][m] for n in venn_names if m in filtered[n])
+                     for m in members),
+                    key=lambda v: v[0].lower(),
+                )
             )
 
-        st.dataframe(pd.DataFrame(region_rows), use_container_width=True,
-                     hide_index=True)
-        _figure_downloads(exports, "candidate_evidence_venn",
-                          "Regions (CSV)", pd.DataFrame(long_rows),
-                          "candidate_evidence_venn_regions.csv")
+        st.markdown("**Venn diagram**")
+        _figure_downloads(venn_exports, "candidate_categories_venn",
+                          "Regions (CSV)", pd.DataFrame(region_rows),
+                          "candidate_categories_venn_regions.csv")
 
 
 def _to_markdown_table(df: pd.DataFrame) -> str:
