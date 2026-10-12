@@ -760,8 +760,7 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
 # element, and the source table of each element is known.
 #
 # Items that match no row are kept as written: every category the candidate
-# table cites is shown. Ticking "Only items that match a table row" drops the
-# ones that break the prompt's GROUNDING RULE.
+# table cites is shown.
 #
 # Two views of the same items, side by side:
 #   heatmap - WHICH categories each candidate shares, every one named, any
@@ -1011,17 +1010,17 @@ def collect_candidate_evidence(text, table_rows, limit=12):
     return evidence
 
 
-def filter_evidence(evidence, tables, grounded_only):
-    """Restrict each candidate's elements to the chosen source tables."""
-    filtered = {}
+def filter_evidence(evidence, tables):
+    """Restrict each candidate's categories to the chosen source tables.
 
-    for name, items in evidence.items():
-        filtered[name] = {
-            key: value for key, value in items.items()
-            if (value[1] in tables) or (value[1] is None and not grounded_only)
-        }
-
-    return filtered
+    Categories that are not a verbatim table row have no source table and
+    are always kept, so every category the candidate table cites is shown.
+    """
+    return {
+        name: {key: value for key, value in items.items()
+               if value[1] is None or value[1] in tables}
+        for name, items in evidence.items()
+    }
 
 
 def abbreviate_species(name):
@@ -1485,28 +1484,15 @@ def render_shared_evidence(response_text, table_rows):
 
     names = list(evidence)
 
-    filter_left, filter_right = st.columns([3, 2])
+    tables = st.multiselect(
+        "Evidence from",
+        options=[1, 2, 3, 4],
+        default=[1, 2, 3, 4],
+        format_func=lambda t: TABLE_LABELS[t],
+        key="web6_venn_tables",
+    )
 
-    with filter_left:
-        tables = st.multiselect(
-            "Evidence from",
-            options=[1, 2, 3, 4],
-            default=[1, 2, 3, 4],
-            format_func=lambda t: TABLE_LABELS[t],
-            key="web6_venn_tables",
-        )
-
-    with filter_right:
-        grounded_only = st.checkbox(
-            "Only items that match a table row",
-            value=False,
-            key="web6_venn_grounded_only",
-            help="By default every category the candidate table cites is "
-                 "shown. Tick this to drop categories that are not a verbatim "
-                 "row of Tables 1-4, which break the prompt's grounding rule.",
-        )
-
-    filtered = filter_evidence(evidence, set(tables), grounded_only)
+    filtered = filter_evidence(evidence, set(tables))
     matrix = evidence_matrix(filtered, names)
 
     if matrix.empty:
@@ -1828,8 +1814,8 @@ if st.session_state.get("web6_response"):
 
     st.markdown(strip_step_labels(strip_step0_section(stored_response)))
 
-    with st.expander("Show STEP 0 evidence checklist", expanded=False):
-        st.markdown(stored_response)
+    # The STEP 0 checklist is still requested and generated (it grounds the
+    # later steps) but not shown; it remains in the downloaded interpretation.
 
     st.download_button(
         label="Download AI interpretation",
