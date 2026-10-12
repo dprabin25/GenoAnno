@@ -20,11 +20,7 @@
 
 import functools
 import io
-import json
 import re
-import time
-import urllib.parse
-import urllib.request
 
 import pandas as pd
 import streamlit as st
@@ -370,381 +366,17 @@ def strip_step_labels(text):
 
 
 # ---------------------------------------------------------------------------
-# 16S phylogeny of the candidate species
+# Candidate table parsing
 # ---------------------------------------------------------------------------
-#
-# The candidate table names species; this section fetches one 16S rRNA
-# sequence per species from NCBI Nucleotide and draws a neighbour-joining tree
-# so the candidates can be seen in relation to each other rather than only
-# read as a list. A species with no usable 16S record is reported as missing
-# rather than silently dropped.
-#
-# SCOPE: distances here are 1 - pairwise identity from a Biopython global
-# alignment, not a multiple-sequence alignment, and no model selection or
-# bootstrapping is performed. That is adequate for a quick look at whether the
-# candidates cluster sensibly, and NOT adequate for publication. The FASTA
-# download exists for that: realign it (MAFFT/MUSCLE) and infer the tree with
-# IQ-TREE or RAxML with support values if the figure is going into a paper.
-
-NCBI_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-
-# NCBI asks that programmatic users identify themselves and stay under 3
-# requests/second without an API key (10/second with one).
-NCBI_TOOL_NAME = "GenoAnno"
-NCBI_REQUEST_INTERVAL = 0.4
-
-# 16S in bacteria is ~1540 bp. The length bound keeps the hit list to
-# full-length gene records and rejects short partial-sequence submissions and
-# whole genomes that merely mention 16S.
-SIXTEEN_S_MIN_LEN = 1200
-SIXTEEN_S_MAX_LEN = 1700
-
-
-def _eutils_get(endpoint, params, timeout=30):
-    url = f"{NCBI_EUTILS}/{endpoint}?" + urllib.parse.urlencode(params)
-    request = urllib.request.Request(url, headers={"User-Agent": NCBI_TOOL_NAME})
-
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
-def fetch_16s(organism, email="", api_key=""):
-    """One 16S rRNA sequence for `organism` from NCBI Nucleotide.
-
-    Returns (accession, sequence) or (None, reason). Cached for a day so
-    repeated runs on the same candidate list do not re-query NCBI.
-    """
-    organism = str(organism).strip()
-
-    if not organism:
-        return None, "no name given"
-
-    shared = {"tool": NCBI_TOOL_NAME}
-
-    if email:
-        shared["email"] = email
-    if api_key:
-        shared["api_key"] = api_key
-
-    term = (
-        f'"{organism}"[Organism] AND '
-        f'("16S ribosomal RNA"[Title] OR "16S rRNA"[Title]) AND '
-        f"{SIXTEEN_S_MIN_LEN}:{SIXTEEN_S_MAX_LEN}[SLEN]"
-    )
-
-    try:
-        payload = json.loads(
-            _eutils_get(
-                "esearch.fcgi",
-                {
-                    **shared,
-                    "db": "nucleotide",
-                    "term": term,
-                    "retmode": "json",
-                    "retmax": "1",
-                    "sort": "relevance",
-                },
-            )
-        )
-    except Exception as error:
-        return None, f"NCBI search failed ({type(error).__name__})"
-
-    ids = payload.get("esearchresult", {}).get("idlist", [])
-
-    if not ids:
-        return None, "no 16S record found"
-
-    time.sleep(NCBI_REQUEST_INTERVAL)
-
-    try:
-        fasta = _eutils_get(
-            "efetch.fcgi",
-            {**shared, "db": "nucleotide", "id": ids[0], "rettype": "fasta", "retmode": "text"},
-        )
-    except Exception as error:
-        return None, f"NCBI fetch failed ({type(error).__name__})"
-
-    lines = [line.strip() for line in fasta.splitlines() if line.strip()]
-
-    if not lines or not lines[0].startswith(">"):
-        return None, "unreadable FASTA from NCBI"
-
-    accession = lines[0][1:].split()[0]
-    sequence = "".join(lines[1:]).upper()
-
-    if len(sequence) < SIXTEEN_S_MIN_LEN:
-        return None, "record shorter than expected for 16S"
-
-    return accession, sequence
-
 
 # A binomial: capitalised genus, lower-case species epithet. Accepts an
 # abbreviated genus ("P. intermedia") so those rows are not silently lost.
 _BINOMIAL = re.compile(r"^(?:[A-Z][a-z]+|[A-Z]\.)\s+[a-z][a-z-]{2,}")
 
-# Stricter form for the plain-text fallback: the whole field must be a
-# binomial, optionally with one subspecies/strain qualifier.
-_BINOMIAL_EXACT = re.compile(
-    r"(?:[A-Z][a-z]+|[A-Z]\.)\s+[a-z][a-z-]{2,}"
-    r"(?:\s+(?:subsp\.|var\.|str\.|sp\.)?\s*[A-Za-z0-9-]+)?"
-)
-
 _NOT_A_SPECIES = {
     "bacterium name", "bacterium", "name", "species", "candidate",
     "summary", "summary paragraph", "phylum", "confidence",
 }
-
-
-def collect_candidate_names(text, limit=12):
-    """Species names from the first column of the model's candidate table.
-
-    The model is inconsistent about table format -- sometimes pipe-delimited
-    markdown, sometimes tab-separated -- so both are accepted. If neither
-    parses, falls back to scanning for binomials at line starts, which still
-    recovers the candidates from a plain-text table.
-    """
-    text = str(text or "")
-    names = []
-
-    def consider(cell):
-        name = re.sub(r"[*_`]", "", str(cell)).strip().strip(".")
-
-        if not name or name.lower() in _NOT_A_SPECIES:
-            return
-        if not _BINOMIAL.match(name):
-            return
-        if name not in names:
-            names.append(name)
-
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        if not stripped:
-            continue
-
-        # Markdown pipe table.
-        if stripped.count("|") >= 3:
-            cells = [c.strip() for c in stripped.strip("|").split("|")]
-
-            if len(cells) >= 3 and not set("".join(cells)) <= set("-: "):
-                consider(cells[0])
-
-            continue
-
-        # Tab-separated table (what Streamlit's markdown renderer emits, and
-        # what the model sometimes produces directly).
-        if "\t" in stripped:
-            cells = [c.strip() for c in stripped.split("\t")]
-
-            if len(cells) >= 3:
-                consider(cells[0])
-
-            continue
-
-    # Last resort: a table flattened to text with runs of spaces instead of
-    # tabs. Requires both a column separator on the line and a first field
-    # that is nothing but a binomial, so ordinary prose ("The analysis shows
-    # that...") cannot be mistaken for a species.
-    if not names:
-        for line in text.splitlines():
-            stripped = re.sub(r"[*_`]", "", line).strip()
-
-            if not re.search(r"\s{2,}|\t|\|", stripped):
-                continue
-
-            first_field = re.split(r"\s{2,}|\t|\|", stripped)[0].strip()
-
-            if _BINOMIAL_EXACT.fullmatch(first_field):
-                consider(first_field)
-
-    return names[:limit]
-
-
-def build_16s_tree(sequences):
-    """Neighbour-joining tree from pairwise identity. Returns (tree, newick)."""
-    try:
-        from Bio import Phylo
-        from Bio.Align import PairwiseAligner
-        from Bio.Phylo.TreeConstruction import DistanceMatrix, DistanceTreeConstructor
-    except ImportError as error:
-        raise RuntimeError(
-            "Biopython is not installed in this environment. Add "
-            "'biopython' to requirements.txt and reboot the app "
-            f"({error})."
-        ) from error
-
-    labels = list(sequences)
-
-    aligner = PairwiseAligner()
-    aligner.mode = "global"
-    aligner.match_score = 1
-    aligner.mismatch_score = 0
-    aligner.open_gap_score = -2
-    aligner.extend_gap_score = -0.5
-
-    # Lower triangle, as DistanceMatrix expects.
-    matrix = []
-
-    for i, a in enumerate(labels):
-        row = []
-
-        for j, b in enumerate(labels[: i + 1]):
-            if i == j:
-                row.append(0.0)
-                continue
-
-            score = aligner.score(sequences[a], sequences[b])
-            identity = score / max(len(sequences[a]), len(sequences[b]))
-            row.append(round(max(0.0, 1.0 - identity), 6))
-
-        matrix.append(row)
-
-    tree = DistanceTreeConstructor().nj(DistanceMatrix(labels, matrix))
-    tree.root_at_midpoint()
-
-    # NJ can return small negative branch lengths; they are meaningless on a
-    # drawn tree and make it unreadable, so clamp them.
-    for clade in tree.find_clades():
-        if clade.branch_length and clade.branch_length < 0:
-            clade.branch_length = 0.0
-
-    handle = io.StringIO()
-    Phylo.write(tree, handle, "newick")
-
-    return tree, handle.getvalue()
-
-
-def draw_16s_tree(tree, n_taxa):
-    from Bio import Phylo
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    figure, axes = plt.subplots(figsize=(8, max(2.5, 0.55 * n_taxa)))
-    Phylo.draw(
-        tree,
-        axes=axes,
-        do_show=False,
-        show_confidence=False,
-        label_func=lambda c: c.name if c.is_terminal() else "",
-    )
-    axes.set_xlabel("substitutions per site (pairwise identity)")
-    axes.spines[["top", "right", "left"]].set_visible(False)
-    axes.set_ylabel("")
-    axes.set_yticks([])
-    figure.tight_layout()
-
-    return figure
-
-
-def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""):
-    """Fetch 16S for each candidate, draw the tree, report what was missing.
-
-    extra_organisms are names the user added after the analysis ran. They are
-    treated exactly like candidates for fetching and tree-building, and are
-    marked in the status table so it stays clear which came from the model.
-    """
-    names = collect_candidate_names(response_text)
-    added = [str(o).strip() for o in extra_organisms if str(o).strip()]
-
-    # Added organisms lead, so they are easy to find in the status table.
-    names = added + [n for n in names if n.lower() not in (a.lower() for a in added)]
-
-    if not names:
-        st.warning(
-            "No species names could be read from the candidate table, so no "
-            "tree was built. The parser accepts pipe-delimited or "
-            "tab-separated tables and lines beginning with a binomial; the "
-            "response matched none of these."
-        )
-
-        with st.expander("Show the response the parser received", expanded=False):
-            st.code(str(response_text)[:4000] or "(empty)")
-
-        return
-
-
-    sequences = {}
-    status = []
-
-    progress = st.progress(0.0, text="Retrieving 16S sequences from NCBI...")
-
-    for index, name in enumerate(names, start=1):
-        accession, result = fetch_16s(name, email=email, api_key=api_key)
-
-        source = "added by you" if name in added else "model candidate"
-
-        if accession:
-            sequences[name] = result
-            status.append({"Species": name, "Source": source,
-                           "16S accession": accession,
-                           "Length (bp)": len(result), "Status": "retrieved"})
-        else:
-            status.append({"Species": name, "Source": source,
-                           "16S accession": "-",
-                           "Length (bp)": "-", "Status": f"missing - {result}"})
-
-        progress.progress(index / len(names), text=f"Retrieving 16S sequences... ({index}/{len(names)})")
-        time.sleep(NCBI_REQUEST_INTERVAL)
-
-    progress.empty()
-
-    status_df = pd.DataFrame(status)
-    st.dataframe(status_df, use_container_width=True)
-
-    missing = status_df[status_df["Status"].str.startswith("missing")]
-
-    if not missing.empty:
-        st.warning(
-            "16S missing for: " + ", ".join(missing["Species"]) +
-            ". These are left out of the tree."
-        )
-
-    if len(sequences) < 3:
-        st.info(
-            f"{len(sequences)} sequence(s) retrieved - a tree needs at least 3 taxa, "
-            "so none is drawn."
-        )
-        return
-
-    with st.spinner(f"Aligning {len(sequences)} sequences and inferring tree..."):
-        try:
-            tree, newick = build_16s_tree(sequences)
-        except Exception as error:
-            st.error(f"Tree construction failed: {type(error).__name__}: {error}")
-            return
-
-        figure = draw_16s_tree(tree, len(sequences))
-
-    st.pyplot(figure, use_container_width=True)
-
-    st.caption(
-        "Neighbour-joining tree from pairwise 16S identity, midpoint-rooted. "
-        "Quick-look topology only - no multiple-sequence alignment, no model "
-        "selection, no bootstrap support. For a publication figure, download "
-        "the FASTA below and infer the tree with MAFFT plus IQ-TREE or RAxML."
-    )
-
-    fasta = "".join(f">{name.replace(' ', '_')}\n{seq}\n" for name, seq in sequences.items())
-
-    column_left, column_right = st.columns(2)
-
-    with column_left:
-        st.download_button(
-            "Download 16S FASTA",
-            data=fasta,
-            file_name="candidate_16S.fasta",
-            mime="text/plain",
-        )
-
-    with column_right:
-        st.download_button(
-            "Download tree (Newick)",
-            data=newick,
-            file_name="candidate_16S_nj.nwk",
-            mime="text/plain",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -1826,9 +1458,6 @@ def call_openai(prompt: str) -> str:
 _RUN_STATE_KEYS = (
     "web6_response",
     "web6_table_rows",
-    "web6_added_organisms",
-    "web6_tree_built",
-    "web6_add_counter",
 )
 
 st.header("Find Similar Oral Bacteria")
@@ -1908,9 +1537,9 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         with st.spinner("Querying the model..."):
             full_response = clean_model_output(call_openai(prompt))
 
-        # Held in session state so the result and its tree survive the reruns
-        # Streamlit performs when a widget below is used. Without this, adding
-        # an organism to the tree would re-trigger the model call.
+        # Held in session state so the result and its figures survive the
+        # reruns Streamlit performs when a widget below is used. Without this,
+        # changing a figure control would re-trigger the model call.
         st.session_state["web6_response"] = full_response
         # Row labels of Tables 1-4, so the Venn section can match the model's
         # cited items back to verbatim rows without re-parsing the uploads.
@@ -1920,24 +1549,18 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
             protein_family_df,
             pathway_completeness_df,
         )
-        st.session_state.setdefault("web6_added_organisms", [])
-        # A new analysis means new candidates, so any tree already on screen
-        # belongs to the previous run; require Generate again.
-        st.session_state["web6_tree_built"] = False
 
 
 # ---------------------------------------------------------------------------
-# Result, Venn, tree, and post-hoc organism addition
+# Result and shared-evidence figures
 #
 # Rendered outside the button block and driven from session state, so the
-# Venn filters and the "add an organism" control below can rerun on their
-# own. Neither calls the model again; the tree step only queries NCBI and the
-# already-fetched 16S sequences come from cache.
+# figure controls can rerun on their own without calling the model again.
 # ---------------------------------------------------------------------------
 
 # A stored result belongs to the files that produced it. Closing the tool and
 # reopening it, or clearing the uploaders, leaves no files but -- because the
-# result lives in session state so the tree controls can rerun without
+# result lives in session state so the figure controls can rerun without
 # re-querying the model -- would otherwise leave the previous run's output on
 # screen as if it described the new (empty) input. Drop it instead.
 if not (bakta_file and kbase_file and products_file):
@@ -1947,7 +1570,6 @@ if not (bakta_file and kbase_file and products_file):
 
 if st.session_state.get("web6_response"):
     stored_response = st.session_state["web6_response"]
-    added_organisms = st.session_state.get("web6_added_organisms", [])
 
     result_header, clear_column = st.columns([4, 1])
 
@@ -1974,136 +1596,8 @@ if st.session_state.get("web6_response"):
         mime="text/plain",
     )
 
-    # Heatmap / UpSet / Venn of the evidence each candidate shares with the
-    # query genome. Sits between the result and the tree: it is read off the
-    # candidate table directly, needs no network call, and is shown as soon as
-    # there is a result.
+    # Heatmap and Venn of the categories each candidate shares with the query
+    # genome, read off the candidate table directly.
     st.divider()
     st.subheader("Shared evidence among candidate bacteria")
     render_shared_evidence(stored_response, st.session_state.get("web6_table_rows", {}))
-
-    # The tree and everything that configures it live here, after the result,
-    # because none of it is meaningful until there are candidate species to
-    # tree. Nothing about the phylogeny appears in the pre-run form.
-    st.divider()
-    st.subheader("16S phylogeny of the candidate species")
-
-    # The tree is built on request, not automatically. Species come from the
-    # candidate table; the user can add their own organisms to that list; only
-    # then does pressing Generate query NCBI. Changing the list clears the
-    # tree, so what is on screen always matches the list above it and no
-    # network call happens without an explicit click.
-    candidate_names = collect_candidate_names(stored_response)
-    tree_taxa = added_organisms + [
-        n for n in candidate_names
-        if n.lower() not in (a.lower() for a in added_organisms)
-    ]
-
-    if candidate_names:
-        st.markdown("**Species read from the candidate table**")
-        st.write(", ".join(candidate_names))
-    else:
-        st.warning(
-            "No species names could be read from the candidate table. The "
-            "parser accepts pipe-delimited or tab-separated tables and lines "
-            "beginning with a binomial."
-        )
-
-    st.markdown("**Add your own organisms (optional)**")
-    st.caption(
-        "Added organisms are treated like candidates: one 16S sequence each "
-        "from NCBI. The model is not queried again and the candidate table "
-        "above does not change."
-    )
-
-    # The text box key carries a counter so that incrementing it after an add
-    # gives a brand-new, empty widget. Setting a widget's value directly after
-    # it has been created is not allowed, and st.form is not usable here
-    # because the host app wraps Streamlit's callables.
-    add_counter = st.session_state.setdefault("web6_add_counter", 0)
-    add_column, add_button_column = st.columns([4, 1])
-
-    with add_column:
-        # Use the widget's RETURN VALUE, never a session_state lookup by key:
-        # the host app wraps Streamlit's callables and may rewrite widget
-        # keys, in which case st.session_state[<our key>] is empty even
-        # though the box visibly contains text. The return value is correct
-        # either way, and on the rerun the Add click triggers it still holds
-        # what the user typed.
-        typed_organism = st.text_input(
-            "Organism name",
-            placeholder="e.g. Tannerella forsythia",
-            key=f"web6_organism_to_add_{add_counter}",
-            label_visibility="collapsed",
-        )
-
-    with add_button_column:
-        add_clicked = st.button(
-            "Add", key="web6_add_organism", use_container_width=True
-        )
-
-    if add_clicked:
-        name = " ".join(str(typed_organism or "").split())
-
-        if not name:
-            st.warning("Enter an organism name first.")
-        elif name.lower() in (o.lower() for o in tree_taxa):
-            st.info(f"{name} is already in the list.")
-        else:
-            st.session_state["web6_added_organisms"] = added_organisms + [name]
-            st.session_state["web6_add_counter"] = add_counter + 1
-            # The list changed, so any tree on screen is now out of date.
-            st.session_state["web6_tree_built"] = False
-            st.rerun()
-
-    if added_organisms:
-        st.success("Added: " + ", ".join(added_organisms))
-
-        if st.button("Clear added organisms", key="web6_clear_added"):
-            st.session_state["web6_added_organisms"] = []
-            st.session_state["web6_tree_built"] = False
-            st.rerun()
-
-    with st.expander("NCBI options", expanded=False):
-        ncbi_email = st.text_input(
-            "Contact email (recommended)",
-            value="",
-            key="ncbi_email",
-            help="NCBI asks programmatic users to identify themselves. "
-                 "Sent only to NCBI, as the E-utilities 'email' parameter.",
-        )
-        ncbi_api_key = st.text_input(
-            "API key (optional, raises the rate limit)",
-            value="",
-            type="password",
-            key="ncbi_api_key",
-        )
-
-    tree_ready = st.session_state.get("web6_tree_built", False)
-
-    st.caption(
-        f"{len(tree_taxa)} species will be placed in the tree"
-        + (" - at least 3 are needed." if len(tree_taxa) < 3 else ".")
-    )
-
-    if st.button(
-        "Regenerate tree" if tree_ready else "Generate tree",
-        type="primary",
-        key="web6_generate_tree",
-        disabled=len(tree_taxa) < 3,
-    ):
-        st.session_state["web6_tree_built"] = True
-        st.rerun()
-
-    if tree_ready:
-        render_16s_phylogeny(
-            stored_response,
-            extra_organisms=added_organisms,
-            email=ncbi_email,
-            api_key=ncbi_api_key,
-        )
-    else:
-        st.info(
-            "Tree not generated yet. Add any organisms you want included, "
-            "then press Generate tree."
-        )
