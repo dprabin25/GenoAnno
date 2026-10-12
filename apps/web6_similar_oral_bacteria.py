@@ -746,6 +746,532 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
         )
 
 
+# ---------------------------------------------------------------------------
+# Venn diagram of the evidence each candidate shares with the query genome
+# ---------------------------------------------------------------------------
+#
+# Each row of the candidate table cites the categories, pathways and families
+# it shares with the query genome. Those cells are free text written by the
+# model, so they are not compared as raw strings: every cited item is matched
+# back to its literal row in Tables 1-4 and that row label becomes the set
+# element. Two candidates citing "Lactate dehydrogenase (Table 4,
+# discriminating)" and "lactate dehydrogenase" therefore count as one shared
+# element, and the source table of each element is known.
+#
+# Items that match no row are "ungrounded" -- the model cited something that
+# is not in the input. They are excluded by default (the prompt's GROUNDING
+# RULE forbids them) and their number is reported, so a reviewer can see how
+# much of the overlap rests on items the tables do not support.
+#
+# The diagram compares 2 or 3 candidates; beyond 3 a Venn stops being
+# readable, so the full presence/absence matrix across every candidate is
+# given as a table instead.
+
+VENN_MAX_SETS = 3
+
+# Brown, blue and orange are reserved in this project's figures for the query
+# bacterium, immune cells and proteins; greens and red carry audit meaning.
+# The set colours avoid all of them.
+VENN_COLORS = ("#7b5ea7", "#2a9d8f", "#c8507f")
+
+TABLE_LABELS = {
+    1: "Table 1 - Functional categories",
+    2: "Table 2 - KEGG-hit descriptions",
+    3: "Table 3 - Protein function families",
+    4: "Table 4 - Metabolic pathways",
+}
+
+# Shortest row label allowed to match inside a longer cited item. Shorter
+# labels ("Sec", "ATPase") would match inside unrelated text.
+_MIN_CONTAINED_LABEL = 8
+
+_TABLE_CITATION = re.compile(
+    r"\(?\s*\bTables?\s*\d(?:\s*(?:[-–,/&+]|and)\s*\d)*\s*\)?\s*[:\-–—]?\s*",
+    re.IGNORECASE,
+)
+_QUALIFIER_PAREN = re.compile(
+    r"\(\s*(?:discriminating|universal|near[- ]universal|housekeeping|generic)\b[^)]*\)",
+    re.IGNORECASE,
+)
+_QUALIFIER_TAIL = re.compile(
+    r"[\s,;:\-–—]*\b(?:discriminating|universal|near[- ]universal)\b\s*$",
+    re.IGNORECASE,
+)
+
+
+def _norm_label(text):
+    text = re.sub(r"[*_`\"“”'‘’]", "", str(text))
+    text = " ".join(text.split()).lower()
+    return text.strip(" .,;:")
+
+
+def collect_table_rows(functional_category_df, kegg_pathway_df,
+                       protein_family_df, pathway_completeness_df):
+    """{normalised label: (verbatim label, table number)} for Tables 1-4.
+
+    Table 4 is indexed first, then 3, 2, 1, so a label that occurs in more
+    than one table is attributed to the pathway-level table.
+    """
+    rows = {}
+    sources = (
+        (4, pathway_completeness_df, "Metabolic pathway name"),
+        (3, protein_family_df, "Protein function family"),
+        (2, kegg_pathway_df, "KEGG-hit description"),
+        (1, functional_category_df, "Functional category"),
+    )
+
+    for table_number, frame, column in sources:
+        if frame is None or column not in frame:
+            continue
+
+        for label in frame[column].dropna().astype(str):
+            key = _norm_label(label)
+
+            if key and key not in rows:
+                rows[key] = (label.strip(), table_number)
+
+    return rows
+
+
+def _ground_item(item, table_rows):
+    """The table row an item refers to, as (label, table), or None."""
+    key = _norm_label(item)
+
+    if not key:
+        return None
+    if key in table_rows:
+        return table_rows[key]
+
+    best = None
+
+    for row_key, value in table_rows.items():
+        if len(row_key) < _MIN_CONTAINED_LABEL or row_key not in key:
+            continue
+        if best is not None and len(row_key) <= len(best[0]):
+            continue
+        if re.search(r"(?<!\w)" + re.escape(row_key) + r"(?!\w)", key):
+            best = (row_key, value)
+
+    return best[1] if best else None
+
+
+def _drop_unbalanced_parens(text):
+    while text.endswith(")") and text.count(")") > text.count("("):
+        text = text[:-1].rstrip()
+    while text.startswith("(") and text.count("(") > text.count(")"):
+        text = text[1:].lstrip()
+    return text
+
+
+def split_evidence_cell(cell):
+    """Cited items from one evidence cell, with table citations and
+    discriminating/universal qualifiers removed."""
+    text = re.sub(r"[*_`]", "", str(cell))
+    items = []
+
+    for piece in re.split(r"\s*(?:;|\n|•)\s*", text):
+        piece = _TABLE_CITATION.sub(" ", piece)
+        piece = _QUALIFIER_PAREN.sub(" ", piece)
+        piece = _QUALIFIER_TAIL.sub("", piece)
+        piece = " ".join(piece.split()).strip(" .,:-–—\"'")
+        piece = _drop_unbalanced_parens(piece).strip(" .,:-–—\"'")
+
+        if piece and _norm_label(piece) not in ("none", "n/a", "na", "-"):
+            items.append(piece)
+
+    return items
+
+
+def ground_evidence(items, table_rows):
+    """{normalised label: (label, table or None)} for a candidate's items.
+
+    An item that does not match a row whole is retried as comma-separated
+    parts, because the model often groups several rows behind one citation
+    ("Table 4: lactate, acetate"). Parts are only used when at least one
+    grounds; otherwise the item is kept whole as ungrounded.
+    """
+    grounded = {}
+
+    for item in items:
+        # 1. The whole item is a row label.
+        exact = table_rows.get(_norm_label(item))
+
+        if exact:
+            grounded[_norm_label(exact[0])] = exact
+            continue
+
+        # 2. A comma-grouped list of rows. Tried before substring matching,
+        #    which would otherwise ground only the longest row in the list.
+        parts = [p.strip() for p in item.split(",") if p.strip()]
+        part_hits = [h for h in (_ground_item(p, table_rows) for p in parts) if h] if len(parts) > 1 else []
+
+        if part_hits:
+            for hit in part_hits:
+                grounded[_norm_label(hit[0])] = hit
+            continue
+
+        # 3. A row label embedded in longer text.
+        hit = _ground_item(item, table_rows)
+
+        if hit:
+            grounded[_norm_label(hit[0])] = hit
+        else:
+            grounded[_norm_label(item)] = (item, None)
+
+    return grounded
+
+
+def collect_candidate_evidence(text, table_rows, limit=12):
+    """{species: grounded evidence} from the model's candidate table.
+
+    The evidence column is found by its header ("Shared ..."); without a
+    recognisable header it is taken to be the third column, as the prompt
+    specifies.
+    """
+    evidence = {}
+    evidence_index = 2
+
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+
+        if stripped.count("|") >= 3:
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+        elif "\t" in stripped:
+            cells = [c.strip() for c in stripped.split("\t")]
+        else:
+            continue
+
+        if len(cells) < 3 or set("".join(cells)) <= set("-: "):
+            continue
+
+        lowered = [_norm_label(c) for c in cells]
+        header_hits = [i for i, c in enumerate(lowered) if c.startswith("shared")]
+
+        if header_hits and not _BINOMIAL.match(re.sub(r"[*_`]", "", cells[0]).strip()):
+            evidence_index = header_hits[0]
+            continue
+
+        name = re.sub(r"[*_`]", "", cells[0]).strip().strip(".")
+
+        if not name or name.lower() in _NOT_A_SPECIES or not _BINOMIAL.match(name):
+            continue
+        if name in evidence or evidence_index >= len(cells):
+            continue
+
+        evidence[name] = ground_evidence(split_evidence_cell(cells[evidence_index]), table_rows)
+
+        if len(evidence) >= limit:
+            break
+
+    return evidence
+
+
+def filter_evidence(evidence, tables, grounded_only):
+    """Restrict each candidate's elements to the chosen source tables."""
+    filtered = {}
+
+    for name, items in evidence.items():
+        filtered[name] = {
+            key: value for key, value in items.items()
+            if (value[1] in tables) or (value[1] is None and not grounded_only)
+        }
+
+    return filtered
+
+
+def abbreviate_species(name):
+    parts = str(name).split()
+
+    if len(parts) >= 2 and len(parts[0]) > 2 and not parts[0].endswith("."):
+        return f"{parts[0][0]}. " + " ".join(parts[1:])
+
+    return str(name)
+
+
+def venn_regions(named_sets):
+    """{bitmask: sorted element keys}; bit i set = element is in set i."""
+    names = list(named_sets)
+    regions = {}
+
+    for element in set().union(*named_sets.values()):
+        mask = sum(1 << i for i, n in enumerate(names) if element in named_sets[n])
+        regions.setdefault(mask, []).append(element)
+
+    return {mask: sorted(members) for mask, members in regions.items()}
+
+
+def region_name(mask, names):
+    members = [abbreviate_species(n) for i, n in enumerate(names) if mask >> i & 1]
+
+    if len(members) == len(names):
+        return "All " + str(len(names)) if len(names) > 2 else "Both"
+
+    return " ∩ ".join(members) + " only"
+
+
+# Fixed geometry: equal circles, radius 1. Region label positions were checked
+# to sit inside exactly the circles their bitmask names.
+_VENN_LAYOUT = {
+    2: {
+        "centers": [(-0.55, 0.0), (0.55, 0.0)],
+        "regions": {0b01: (-1.0, 0.0), 0b10: (1.0, 0.0), 0b11: (0.0, 0.0)},
+        "titles": [(-0.85, 1.32, "center"), (0.85, 1.32, "center")],
+        "limits": ((-1.75, 1.75), (-1.2, 1.65)),
+        "size": (5.2, 3.9),
+    },
+    3: {
+        "centers": [(-0.55, 0.32), (0.55, 0.32), (0.0, -0.63)],
+        "regions": {
+            0b001: (-1.05, 0.60), 0b010: (1.05, 0.60), 0b100: (0.0, -1.25),
+            0b011: (0.0, 0.78), 0b101: (-0.62, -0.38), 0b110: (0.62, -0.38),
+            0b111: (0.0, 0.05),
+        },
+        "titles": [(-0.85, 1.64, "center"), (0.85, 1.64, "center"), (0.0, -1.74, "center")],
+        "limits": ((-1.75, 1.75), (-2.08, 1.98)),
+        "size": (5.2, 5.3),
+    },
+}
+
+
+def draw_evidence_venn(named_sets):
+    """Draw a 2- or 3-set Venn of region counts.
+
+    Returns (figure, {"svg": bytes, "pdf": bytes, "png": bytes}). Exports are
+    written inside the same style context so text stays editable in the SVG
+    and embedded as TrueType in the PDF.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Circle
+
+    names = list(named_sets)
+    layout = _VENN_LAYOUT[len(names)]
+    regions = venn_regions(named_sets)
+
+    style = {
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": 10,
+        "svg.fonttype": "none",
+        "pdf.fonttype": 42,
+    }
+
+    with plt.rc_context(style):
+        figure, axes = plt.subplots(figsize=layout["size"])
+
+        for (x, y), color in zip(layout["centers"], VENN_COLORS):
+            axes.add_patch(Circle((x, y), 1.0, facecolor=color, alpha=0.22,
+                                  edgecolor="none"))
+            axes.add_patch(Circle((x, y), 1.0, facecolor="none",
+                                  edgecolor=color, linewidth=1.4))
+
+        for mask, (x, y) in layout["regions"].items():
+            axes.text(x, y, str(len(regions.get(mask, []))),
+                      ha="center", va="center", fontsize=11, color="#222222")
+
+        for index, (name, (x, y, align)) in enumerate(zip(names, layout["titles"])):
+            color = VENN_COLORS[index]
+            below = y < 0
+            axes.text(x, y, abbreviate_species(name), ha=align,
+                      va="top" if below else "bottom",
+                      fontstyle="italic", fontsize=10, color=color)
+            axes.text(x, y - 0.13 if below else y - 0.02,
+                      f"n = {len(named_sets[name])}", ha=align,
+                      va="top" if below else "top",
+                      fontsize=9, color="#555555")
+
+        axes.set_xlim(*layout["limits"][0])
+        axes.set_ylim(*layout["limits"][1])
+        axes.set_aspect("equal")
+        axes.axis("off")
+        figure.tight_layout(pad=0.4)
+
+        exports = {}
+
+        for fmt in ("svg", "pdf", "png"):
+            buffer = io.BytesIO()
+            figure.savefig(buffer, format=fmt, dpi=600 if fmt == "png" else None,
+                           bbox_inches="tight", transparent=(fmt != "png"),
+                           facecolor="white" if fmt == "png" else "none")
+            exports[fmt] = buffer.getvalue()
+
+    return figure, exports
+
+
+def _table_tag(table_number):
+    return f"Table {table_number}" if table_number else "not in Tables 1-4"
+
+
+def render_evidence_venn(response_text, table_rows):
+    evidence = collect_candidate_evidence(response_text, table_rows)
+
+    if len(evidence) < 2:
+        st.info(
+            "Fewer than two candidates with a readable evidence column were "
+            "found in the candidate table, so there is nothing to compare."
+        )
+        return
+
+    if not table_rows:
+        st.warning(
+            "The processed tables from this run are not available, so cited "
+            "items cannot be matched to their rows. Run the analysis again."
+        )
+        return
+
+    names = list(evidence)
+
+    filter_left, filter_right = st.columns([3, 2])
+
+    with filter_left:
+        tables = st.multiselect(
+            "Evidence from",
+            options=[1, 2, 3, 4],
+            default=[1, 2, 3, 4],
+            format_func=lambda t: TABLE_LABELS[t],
+            key="web6_venn_tables",
+        )
+
+    with filter_right:
+        grounded_only = st.checkbox(
+            "Only items that match a table row",
+            value=True,
+            key="web6_venn_grounded_only",
+            help="Cited items that do not appear as a row in Tables 1-4 break "
+                 "the prompt's grounding rule. Unticking includes them, labelled "
+                 "'not in Tables 1-4'.",
+        )
+
+    chosen = st.multiselect(
+        f"Candidates in the diagram (2-{VENN_MAX_SETS})",
+        options=names,
+        default=names[:VENN_MAX_SETS],
+        max_selections=VENN_MAX_SETS,
+        key="web6_venn_candidates",
+    )
+
+    filtered = filter_evidence(evidence, set(tables), grounded_only)
+
+    ungrounded = {
+        name: sum(1 for value in items.values() if value[1] is None)
+        for name, items in evidence.items()
+    }
+    total_ungrounded = sum(ungrounded[n] for n in chosen) if chosen else 0
+
+    if len(chosen) < 2:
+        st.info("Select at least two candidates.")
+    else:
+        named_sets = {name: set(filtered[name]) for name in chosen}
+
+        if not any(named_sets.values()):
+            st.info("No cited items remain for these candidates under the current filters.")
+        else:
+            figure, exports = draw_evidence_venn(named_sets)
+            st.pyplot(figure, use_container_width=False)
+
+            import matplotlib.pyplot as plt
+            plt.close(figure)
+
+            caption = (
+                "Counts are distinct Table 1-4 rows each candidate's evidence "
+                "cell cites as shared with the query genome. Circle size is "
+                "fixed and not proportional to n."
+            )
+
+            if total_ungrounded:
+                caption += (
+                    f" {total_ungrounded} cited item(s) across the selected "
+                    "candidates match no table row"
+                    + (" and are excluded." if grounded_only else " and are included.")
+                )
+
+            st.caption(caption)
+
+            labels = {}
+            for name in chosen:
+                for key, value in filtered[name].items():
+                    labels.setdefault(key, value)
+
+            region_rows = []
+            long_rows = []
+
+            for mask, members in sorted(
+                venn_regions(named_sets).items(),
+                key=lambda kv: (-bin(kv[0]).count("1"), kv[0]),
+            ):
+                title = region_name(mask, chosen)
+                region_rows.append({
+                    "Region": title,
+                    "Items": len(members),
+                    "Members": "; ".join(labels[m][0] for m in members),
+                })
+                long_rows.extend(
+                    {"Region": title, "Item": labels[m][0],
+                     "Source": _table_tag(labels[m][1])}
+                    for m in members
+                )
+
+            st.dataframe(pd.DataFrame(region_rows), use_container_width=True,
+                         hide_index=True)
+
+            download_columns = st.columns(4)
+            downloads = (
+                ("Venn (SVG)", exports["svg"], "candidate_evidence_venn.svg", "image/svg+xml"),
+                ("Venn (PDF)", exports["pdf"], "candidate_evidence_venn.pdf", "application/pdf"),
+                ("Venn (PNG, 600 dpi)", exports["png"], "candidate_evidence_venn.png", "image/png"),
+                ("Regions (CSV)", pd.DataFrame(long_rows).to_csv(index=False),
+                 "candidate_evidence_venn_regions.csv", "text/csv"),
+            )
+
+            for column, (label, data, file_name, mime) in zip(download_columns, downloads):
+                with column:
+                    st.download_button(label, data=data, file_name=file_name,
+                                       mime=mime, use_container_width=True,
+                                       key=f"web6_venn_dl_{file_name}")
+
+    with st.expander(f"Presence/absence across all {len(names)} candidates", expanded=False):
+        all_labels = {}
+        for items in filtered.values():
+            for key, value in items.items():
+                all_labels.setdefault(key, value)
+
+        if not all_labels:
+            st.write("No cited items under the current filters.")
+        else:
+            matrix_rows = []
+
+            for key, (label, table_number) in all_labels.items():
+                row = {"Item": label, "Source": _table_tag(table_number)}
+                cited_by = 0
+
+                for name in names:
+                    present = key in filtered[name]
+                    row[abbreviate_species(name)] = "●" if present else ""
+                    cited_by += present
+
+                row["Cited by"] = cited_by
+                matrix_rows.append(row)
+
+            matrix = pd.DataFrame(matrix_rows).sort_values(
+                ["Cited by", "Source", "Item"], ascending=[False, True, True]
+            )
+            st.dataframe(matrix, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download matrix (CSV)",
+                data=matrix.replace("●", 1).replace("", 0).to_csv(index=False),
+                file_name="candidate_evidence_matrix.csv",
+                mime="text/csv",
+                key="web6_venn_matrix_dl",
+            )
+
+        if any(ungrounded.values()):
+            st.caption(
+                "Cited items matching no table row: "
+                + ", ".join(f"{abbreviate_species(n)} {c}" for n, c in ungrounded.items() if c)
+            )
+
+
 def _to_markdown_table(df: pd.DataFrame) -> str:
     try:
         return df.to_markdown(index=False)
@@ -845,6 +1371,16 @@ def call_openai(prompt: str) -> str:
 # with runpy.run_path rather than as __main__.
 # ---------------------------------------------------------------------------
 
+# Every session-state key that belongs to one analysis run. Cleared together
+# when the inputs disappear or the user clears the result.
+_RUN_STATE_KEYS = (
+    "web6_response",
+    "web6_table_rows",
+    "web6_added_organisms",
+    "web6_tree_built",
+    "web6_add_counter",
+)
+
 st.header("Find Similar Oral Bacteria")
 st.caption(
     "Upload your three raw annotation files. This tab derives four summary "
@@ -926,6 +1462,14 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
         # Streamlit performs when a widget below is used. Without this, adding
         # an organism to the tree would re-trigger the model call.
         st.session_state["web6_response"] = full_response
+        # Row labels of Tables 1-4, so the Venn section can match the model's
+        # cited items back to verbatim rows without re-parsing the uploads.
+        st.session_state["web6_table_rows"] = collect_table_rows(
+            functional_category_df,
+            kegg_pathway_df,
+            protein_family_df,
+            pathway_completeness_df,
+        )
         st.session_state.setdefault("web6_added_organisms", [])
         # A new analysis means new candidates, so any tree already on screen
         # belongs to the previous run; require Generate again.
@@ -933,12 +1477,12 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
 
 
 # ---------------------------------------------------------------------------
-# Result, tree, and post-hoc organism addition
+# Result, Venn, tree, and post-hoc organism addition
 #
 # Rendered outside the button block and driven from session state, so the
-# "add an organism" control below can rebuild the tree on its own. That step
-# only queries NCBI -- the model is not called again, the candidate table does
-# not change, and the already-fetched 16S sequences come from cache.
+# Venn filters and the "add an organism" control below can rerun on their
+# own. Neither calls the model again; the tree step only queries NCBI and the
+# already-fetched 16S sequences come from cache.
 # ---------------------------------------------------------------------------
 
 # A stored result belongs to the files that produced it. Closing the tool and
@@ -947,12 +1491,7 @@ if st.button("Find similar bacteria", type="primary", key="run_similar_bacteria"
 # re-querying the model -- would otherwise leave the previous run's output on
 # screen as if it described the new (empty) input. Drop it instead.
 if not (bakta_file and kbase_file and products_file):
-    for stale_key in (
-        "web6_response",
-        "web6_added_organisms",
-        "web6_tree_built",
-        "web6_add_counter",
-    ):
+    for stale_key in _RUN_STATE_KEYS:
         st.session_state.pop(stale_key, None)
 
 
@@ -968,12 +1507,7 @@ if st.session_state.get("web6_response"):
     with clear_column:
         if st.button("Clear result", key="web6_clear_result",
                      use_container_width=True):
-            for stale_key in (
-                "web6_response",
-                "web6_added_organisms",
-                "web6_tree_built",
-                "web6_add_counter",
-            ):
+            for stale_key in _RUN_STATE_KEYS:
                 st.session_state.pop(stale_key, None)
 
             st.rerun()
@@ -989,6 +1523,14 @@ if st.session_state.get("web6_response"):
         file_name="similar_oral_bacteria_interpretation.txt",
         mime="text/plain",
     )
+
+    # Venn of the evidence each candidate shares with the query genome. Sits
+    # between the result and the tree: it is read off the candidate table
+    # directly, needs no network call, and is shown as soon as there is a
+    # result.
+    st.divider()
+    st.subheader("Shared evidence among candidate bacteria")
+    render_evidence_venn(stored_response, st.session_state.get("web6_table_rows", {}))
 
     # The tree and everything that configures it live here, after the result,
     # because none of it is meaningful until there are candidate species to
