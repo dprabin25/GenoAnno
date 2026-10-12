@@ -1309,18 +1309,58 @@ def _venn_geometry(n_sets):
     }
 
 
-_VENN_COUNT_SIZE = 10.5      # pt, count in a region with room for it
-_VENN_MIN_COUNT_SIZE = 5.5   # pt, smallest count in a cramped region
-INK_ZERO = "#a3a3a3"         # empty regions recede; populated ones carry the eye
+_VENN_LETTER_SIZE = 10.5     # pt, letters in a region with room for them
+_VENN_MIN_LETTER_SIZE = 5.5  # pt, smallest letters in a cramped region
 
 
-def draw_evidence_venn(named_sets, phyla=None):
-    """Draw an n-set Venn (2-5): the count of categories held by exactly each
-    combination of candidates.
+def _region_letter_lines(ids, radius_pt):
+    """Wrap a region's heatmap letters ("A, B, C") to fit inside it.
 
-    Overlaps show what candidates share, the single-candidate regions what
-    each holds alone. Empty regions are drawn in a light grey so the
-    populated ones carry the eye. Returns (figure, {"svg", "pdf", "png"}).
+    The region's inscribed circle bounds the text block. Tries font sizes
+    from the full size down to the minimum and keeps the largest that fits;
+    returns (lines, font size)."""
+    tokens = [f"{i}," for i in ids[:-1]] + [ids[-1]]
+    width_pt, height_pt = 1.7 * radius_pt, 1.5 * radius_pt
+    size = _VENN_LETTER_SIZE
+
+    while True:
+        chars = max(1, int(width_pt / (0.62 * size)))
+        lines, current = [], ""
+        for token in tokens:
+            candidate = f"{current} {token}".strip()
+            if current and len(candidate) > chars:
+                lines.append(current)
+                current = token
+            else:
+                current = candidate
+        lines.append(current)
+
+        # Same number of lines, letters spread evenly across them, so a list
+        # never ends on a lone letter ("A, B, C, D," / "E").
+        per_line = -(-len(tokens) // len(lines))
+        lines = [" ".join(tokens[i:i + per_line])
+                 for i in range(0, len(tokens), per_line)]
+
+        fits = len(lines) * size * 1.2 <= height_pt and \
+            max(len(l) for l in lines) <= chars
+        if fits or size <= _VENN_MIN_LETTER_SIZE:
+            return lines, size
+        size = max(_VENN_MIN_LETTER_SIZE, size - 0.5)
+
+
+def _letter_sort_key(letter):
+    return (len(letter), letter)
+
+
+def draw_evidence_venn(named_sets, phyla=None, ids=None):
+    """Draw an n-set Venn (2-5) labelled with the heatmap's category letters.
+
+    Each region lists the letters of the categories held by exactly that
+    combination of candidates (ids maps category key -> letter), so the
+    diagram reads straight across to the heatmap rows: overlaps are what
+    candidates share, single-candidate regions what each holds alone. Empty
+    regions are left blank. Titles give each candidate's marker, italic
+    species name and phylum. Returns (figure, {"svg", "pdf", "png": bytes}).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1331,24 +1371,25 @@ def draw_evidence_venn(named_sets, phyla=None):
     n_sets = len(names)
     geometry = _venn_geometry(n_sets)
     regions = venn_regions(named_sets)
+    ids = ids or {}
 
     (bx_low, bx_high), (by_low, by_high) = geometry["bounds"]
     target_width_in = {2: 4.4, 3: 4.4, 4: 5.6, 5: 6.6}[n_sets]
     points_per_unit = 72 * target_width_in / (bx_high - bx_low + 1.6)
     unit = 1.0 / points_per_unit
 
-    name_size, count_line_size = 10, 9
-    title_height = (name_size * 1.25 + count_line_size * 1.3) * unit
+    name_size = 10
+    marker_width, marker_gap = 7 * unit, 4 * unit
+    title_height = name_size * 1.35 * unit
 
     title_blocks = []
     for name, (x, y, ha, va) in zip(names, geometry["titles"]):
-        count_text = f"n = {len(named_sets[name])}"
-        width = max(organism_label_chars(name, phyla) * 0.6 * name_size,
-                    10 + len(count_text) * 0.55 * count_line_size) * unit
+        width = marker_width + marker_gap \
+            + organism_label_chars(name, phyla) * 0.6 * name_size * unit
         left = x if ha == "left" else x - width if ha == "right" else x - width / 2
         bottom = y if va == "bottom" else y - title_height if va == "top" \
             else y - title_height / 2
-        title_blocks.append((left, bottom, width, ha))
+        title_blocks.append((left, bottom, width))
 
     x_low = min([bx_low] + [b[0] for b in title_blocks]) - 0.08
     x_high = max([bx_high] + [b[0] + b[2] for b in title_blocks]) + 0.08
@@ -1376,37 +1417,28 @@ def draw_evidence_venn(named_sets, phyla=None):
                                    zorder=2))
 
         for mask, room in geometry["regions"].items():
-            count = len(regions.get(mask, []))
-            size = max(_VENN_MIN_COUNT_SIZE,
-                       min(_VENN_COUNT_SIZE, room["radius"] * points_per_unit * 0.8))
-            axes.text(room["x"], room["y"], str(count), ha="center",
-                      va="center", fontsize=size,
-                      fontweight="bold" if count else "normal",
-                      color=INK if count else INK_ZERO, zorder=4)
+            members = regions.get(mask, [])
+            if not members:
+                continue
 
-        # Title block: italic name, then marker (shape + colour) and n.
-        for index, (name, (left, bottom, width, ha)) in enumerate(
+            letters = sorted((ids.get(m, "?") for m in members), key=_letter_sort_key)
+            lines, size = _region_letter_lines(letters, room["radius"] * points_per_unit)
+            axes.text(room["x"], room["y"], "\n".join(lines), ha="center",
+                      va="center", fontsize=size, fontweight="bold",
+                      linespacing=1.2, color=INK, zorder=4)
+
+        # Title: marker (shape + colour), then italic species and phylum.
+        for index, (name, (left, bottom, width)) in enumerate(
                 zip(names, title_blocks)):
-            top = bottom + title_height
-            anchor_x = left if ha == "left" else left + width if ha == "right" \
-                else left + width / 2
-            draw_organism_label(axes, anchor_x, top, name, phyla, name_size,
-                                ha=ha, va="top")
-
-            count_text = f"n = {len(named_sets[name])}"
-            pair_width = (10 + len(count_text) * 0.55 * count_line_size) * unit
-            pair_left = left if ha == "left" else left + width - pair_width \
-                if ha == "right" else anchor_x - pair_width / 2
-            line_top = top - name_size * 1.25 * unit
-
-            axes.plot(pair_left + 3.5 * unit, line_top - 4.6 * unit,
+            middle = bottom + title_height / 2
+            axes.plot(left + marker_width / 2, middle,
                       marker=VENN_MARKERS[index], markersize=6,
                       markerfacecolor=VENN_COLORS[index],
                       markeredgecolor=VENN_STROKES[index],
                       markeredgewidth=0.9, linestyle="none", zorder=4)
-            axes.text(pair_left + 10 * unit, line_top, count_text, ha="left",
-                      va="top", fontsize=count_line_size, color=INK_MUTED,
-                      zorder=4)
+            draw_organism_label(axes, left + marker_width + marker_gap, middle,
+                                name, phyla, name_size, ha="left",
+                                va="center_baseline")
 
         exports = export_figure(figure)
 
@@ -1647,7 +1679,8 @@ def render_shared_evidence(response_text, table_rows):
             st.info("Select at least two candidates for the Venn diagram.")
             venn_exports = None
         else:
-            figure, venn_exports = draw_evidence_venn(named_sets, phyla)
+            ids = dict(zip(matrix["key"], matrix["ID"]))
+            figure, venn_exports = draw_evidence_venn(named_sets, phyla, ids)
             st.pyplot(figure, use_container_width=True)
             plt.close(figure)
 
@@ -1655,10 +1688,9 @@ def render_shared_evidence(response_text, table_rows):
         "Left: each filled cell is a category the candidate's evidence cell "
         "cites as shared with the query genome; rows are ordered by how many "
         "candidates share them, and candidates by the model's confidence. "
-        "Right: the same categories as counts - overlaps are categories the "
-        "candidates have in common, single-candidate regions are categories "
-        "only that candidate cites. Shape size is fixed and not proportional "
-        "to n."
+        "Right: the same categories by their heatmap letters - overlaps are "
+        "categories the candidates have in common, single-candidate regions "
+        "are categories only that candidate cites; empty regions are blank."
     )
 
     csv = matrix[["ID", "Category", "Source"] + names + ["Cited by"]].copy()
@@ -1676,13 +1708,12 @@ def render_shared_evidence(response_text, table_rows):
         ):
             title = region_name(mask, venn_names)
             region_rows.extend(
-                {"Region": title, "Category": filtered_label,
-                 "Source": _table_tag(table_number)}
-                for filtered_label, table_number in sorted(
-                    (next(filtered[n][m] for n in venn_names if m in filtered[n])
-                     for m in members),
-                    key=lambda v: v[0].lower(),
-                )
+                {"Region": title, "ID": ids[m],
+                 "Category": next(filtered[n][m][0] for n in venn_names
+                                  if m in filtered[n]),
+                 "Source": _table_tag(next(filtered[n][m][1] for n in venn_names
+                                           if m in filtered[n]))}
+                for m in sorted(members, key=lambda k: _letter_sort_key(ids[k]))
             )
 
         st.markdown("**Venn diagram**")
