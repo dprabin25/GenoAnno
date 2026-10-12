@@ -900,6 +900,15 @@ def _drop_unbalanced_parens(text):
     return text
 
 
+# Words the model attaches to an item to qualify it, and placeholders. They
+# are never items themselves, however a cell is formatted.
+_NOT_AN_ITEM = {
+    "none", "n/a", "na", "-", "discriminating", "universal",
+    "near-universal", "near universal", "housekeeping", "generic",
+    "non-discriminating", "discriminating category", "universal category",
+}
+
+
 def split_evidence_cell(cell):
     """Cited items from one evidence cell, with table citations and
     discriminating/universal qualifiers removed."""
@@ -908,6 +917,11 @@ def split_evidence_cell(cell):
     # "A (Table 1), B (Table 4)": a citation followed by a comma ends an
     # item, so treat it as a separator. Commas inside a name are untouched.
     text = re.sub(r"(\(\s*Tables?\s*\d[^)]*\))\s*,", r"\1;", text, flags=re.IGNORECASE)
+
+    # Remove every parenthesised citation whole, qualifiers included:
+    # "(Table 1, discriminating)" must not leave ", discriminating" behind
+    # to be split off as an item of its own.
+    text = re.sub(r"\(\s*Tables?\b[^)]*\)", " ", text, flags=re.IGNORECASE)
     items = []
 
     for piece in re.split(r"\s*(?:;|\n|•)\s*", text):
@@ -917,7 +931,7 @@ def split_evidence_cell(cell):
         piece = " ".join(piece.split()).strip(" .,:-–—\"'")
         piece = _drop_unbalanced_parens(piece).strip(" .,:-–—\"'")
 
-        if piece and _norm_label(piece) not in ("none", "n/a", "na", "-"):
+        if piece and _norm_label(piece) not in _NOT_AN_ITEM:
             items.append(piece)
 
     return items
@@ -960,7 +974,8 @@ def ground_evidence(items, table_rows):
                     i = j
                     break
             else:
-                add(_ground_item(parts[i], table_rows) or (parts[i], None))
+                if _norm_label(parts[i]) not in _NOT_AN_ITEM:
+                    add(_ground_item(parts[i], table_rows) or (parts[i], None))
                 i += 1
 
     return grounded
@@ -1463,12 +1478,12 @@ def _fit_text(text, max_chars):
     return text if len(text) <= max_chars else text[: max_chars - 1].rstrip() + "…"
 
 
-def draw_evidence_heatmap(matrix, names, phyla=None):
+def draw_evidence_heatmap(matrix, names):
     """Binary presence/absence heatmap: categories down, candidates across.
 
     Each row reads "A  Category" then one cell per candidate and the
-    "Shared by" fraction. Column heads give each candidate's phylum after
-    its name. Drawn in cell units (1 cell = 1 data unit) on an
+    "Shared by" fraction. Column heads are the italic species names; the
+    phylum is given only in the Venn titles beside it. Drawn in cell units (1 cell = 1 data unit) on an
     axes that fills the figure, with the figure sized from the row/column
     counts, so cells stay square and text sizes stay fixed however many rows
     there are.
@@ -1490,7 +1505,7 @@ def draw_evidence_heatmap(matrix, names, phyla=None):
     number_units = max(len(i) for i in matrix["ID"]) * 0.68 * row_font / ppu
     label_units = max(len(l) for l in labels) * 0.52 * row_font / ppu
     left_units = number_units + 0.45 + label_units + 1.0
-    column_head_units = max(organism_label_chars(n, phyla) for n in names) \
+    column_head_units = max(organism_label_chars(n) for n in names) \
         * 0.52 * head_font / ppu * 0.87 + 1.0
     count_units = 2.2
 
@@ -1507,7 +1522,7 @@ def draw_evidence_heatmap(matrix, names, phyla=None):
         axes.axis("off")
 
         for col, name in enumerate(names):
-            draw_organism_label(axes, col + 0.5, -0.35, name, phyla,
+            draw_organism_label(axes, col + 0.5, -0.35, name, None,
                                 head_font, va="bottom", rotation=60)
 
         axes.text(n_cols + 0.6, -0.35, "Shared by", rotation=60,
@@ -1621,7 +1636,7 @@ def render_shared_evidence(response_text, table_rows):
     heatmap_column, venn_column = st.columns([1, 1])
 
     with heatmap_column:
-        figure, heatmap_exports = draw_evidence_heatmap(matrix, names, phyla)
+        figure, heatmap_exports = draw_evidence_heatmap(matrix, names)
         st.pyplot(figure, use_container_width=True)
         plt.close(figure)
 
