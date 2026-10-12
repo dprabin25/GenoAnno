@@ -810,6 +810,7 @@ FIGURE_STYLE = {
     "pdf.fonttype": 42,
 }
 
+
 TABLE_LABELS = {
     1: "Table 1 - Functional categories",
     2: "Table 2 - KEGG-hit descriptions",
@@ -1032,6 +1033,107 @@ def abbreviate_species(name):
     return str(name)
 
 
+def collect_candidate_phyla(text):
+    """{species: current phylum name} from the candidate table's Phylum
+    column, located by its header (default: second column, as the prompt
+    specifies). The prompt asks for the current name with the older one in
+    brackets, but the model does not always keep that order ("Firmicutes
+    (Bacillota)"), so the name ending in -ota -- the suffix the 2021
+    nomenclature rule gives every current phylum name -- is preferred, and
+    the first name is used only when neither ends in -ota."""
+    phyla = {}
+    phylum_index = 1
+
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+
+        if stripped.count("|") >= 3:
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+        elif "\t" in stripped:
+            cells = [c.strip() for c in stripped.split("\t")]
+        else:
+            continue
+
+        lowered = [_norm_label(c) for c in cells]
+        if "phylum" in lowered:
+            phylum_index = lowered.index("phylum")
+            continue
+
+        name = re.sub(r"[*_`]", "", cells[0]).strip().strip(".")
+        if not _BINOMIAL.match(name) or phylum_index >= len(cells):
+            continue
+
+        names_given = [n.strip() for n in re.split(r"[()\[\]/,;]", re.sub(
+            r"[*_`]", "", cells[phylum_index])) if n.strip()]
+        current = [n for n in names_given if n.lower().endswith("ota")]
+        phylum = (current or names_given or [""])[0]
+        if phylum and name not in phyla:
+            phyla[name] = phylum
+
+    return phyla
+
+
+def draw_organism_label(axes, x, y, name, phyla, fontsize, ha="left",
+                        va="baseline", rotation=0, color=INK, zorder=4):
+    """Draw "P. intermedia (Bacteroidota)": species italic, phylum upright.
+
+    The two pieces are separate text objects -- so each is one clean,
+    editable text element in the SVG -- with the phylum placed exactly after
+    the measured width of the species name, along the label's rotation.
+    The axes limits must already be set: positions are mapped through the
+    axes transform.
+    """
+    import math
+    from matplotlib.font_manager import FontProperties
+
+    renderer = axes.figure.canvas.get_renderer()
+    pixels_per_point = axes.figure.dpi / 72
+    space = 0.3 * fontsize * pixels_per_point
+
+    phylum = (phyla or {}).get(name)
+    pieces = [(abbreviate_species(name), "italic")]
+    if phylum:
+        pieces.append((f"({phylum})", "normal"))
+
+    widths = [
+        renderer.get_text_width_height_descent(
+            text, FontProperties(style=style, size=fontsize), ismath=False)[0]
+        for text, style in pieces
+    ]
+
+    # Positions are worked out in display pixels, where "along the label"
+    # is simply the rotation angle whatever the axes' direction or scale
+    # (the heatmap's y-axis runs downward), then mapped back to data units.
+    total = sum(widths) + space * (len(pieces) - 1)
+    offset = -{"left": 0.0, "center": total / 2, "right": total}[ha]
+    dx, dy = math.cos(math.radians(rotation)), math.sin(math.radians(rotation))
+    anchor = axes.transData.transform((x, y))
+    to_data = axes.transData.inverted()
+
+    for (text, style), width in zip(pieces, widths):
+        px, py = to_data.transform((anchor[0] + dx * offset, anchor[1] + dy * offset))
+        axes.text(px, py, text, ha="left", va=va, rotation=rotation,
+                  rotation_mode="anchor", fontstyle=style, fontsize=fontsize,
+                  color=color, zorder=zorder)
+        offset += width + space
+
+
+def organism_label_chars(name, phyla=None):
+    """Visible length of an organism label, for layout estimates."""
+    phylum = (phyla or {}).get(name)
+    return len(abbreviate_species(name)) + (len(phylum) + 3 if phylum else 0)
+
+
+def row_id(index):
+    """0 -> A, 25 -> Z, 26 -> AA, 27 -> AB, ..."""
+    letters = ""
+    index += 1
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
 def venn_regions(named_sets):
     """{bitmask: sorted element keys}; bit i set = element is in set i."""
     names = list(named_sets)
@@ -1076,12 +1178,15 @@ _VENN_ELLIPSES = {
 }
 
 # For 2-3 circles the titles sit above (and, for the third circle, below)
-# the diagram, the familiar layout. Count anchors are computed for every n.
+# the diagram. The two top titles are anchored outward from the centre line
+# -- the left one ends there, the right one starts there -- so labels that
+# carry a phylum never run into each other. Count anchors are computed for
+# every n.
 _VENN_HAND_PLACED = {
-    2: {"titles": [(-0.85, 1.10, "center", "bottom"),
-                   (0.85, 1.10, "center", "bottom")]},
-    3: {"titles": [(-0.85, 1.42, "center", "bottom"),
-                   (0.85, 1.42, "center", "bottom"),
+    2: {"titles": [(-0.12, 1.10, "right", "bottom"),
+                   (0.12, 1.10, "left", "bottom")]},
+    3: {"titles": [(-0.12, 1.42, "right", "bottom"),
+                   (0.12, 1.42, "left", "bottom"),
                    (0.0, -1.72, "center", "top")]},
 }
 
@@ -1194,7 +1299,7 @@ _VENN_MIN_COUNT_SIZE = 5.5   # pt, smallest count in a cramped region
 INK_ZERO = "#a3a3a3"         # empty regions recede; populated ones carry the eye
 
 
-def draw_evidence_venn(named_sets):
+def draw_evidence_venn(named_sets, phyla=None):
     """Draw an n-set Venn (2-5): the count of categories held by exactly each
     combination of candidates.
 
@@ -1223,7 +1328,7 @@ def draw_evidence_venn(named_sets):
     title_blocks = []
     for name, (x, y, ha, va) in zip(names, geometry["titles"]):
         count_text = f"n = {len(named_sets[name])}"
-        width = max(len(abbreviate_species(name)) * 0.55 * name_size,
+        width = max(organism_label_chars(name, phyla) * 0.6 * name_size,
                     10 + len(count_text) * 0.55 * count_line_size) * unit
         left = x if ha == "left" else x - width if ha == "right" else x - width / 2
         bottom = y if va == "bottom" else y - title_height if va == "top" \
@@ -1241,6 +1346,10 @@ def draw_evidence_venn(named_sets):
         figure = plt.figure(figsize=((x_high - x_low) * points_per_unit / 72,
                                      (y_high - y_low) * points_per_unit / 72))
         axes = figure.add_axes([0, 0, 1, 1])
+        axes.set_xlim(x_low, x_high)
+        axes.set_ylim(y_low, y_high)
+        axes.set_aspect("equal")
+        axes.axis("off")
 
         for index, (cx, cy, w, h, angle) in enumerate(geometry["ellipses"]):
             axes.add_patch(Ellipse((cx, cy), w, h, angle=angle,
@@ -1266,8 +1375,8 @@ def draw_evidence_venn(named_sets):
             top = bottom + title_height
             anchor_x = left if ha == "left" else left + width if ha == "right" \
                 else left + width / 2
-            axes.text(anchor_x, top, abbreviate_species(name), ha=ha, va="top",
-                      fontstyle="italic", fontsize=name_size, color=INK, zorder=4)
+            draw_organism_label(axes, anchor_x, top, name, phyla, name_size,
+                                ha=ha, va="top")
 
             count_text = f"n = {len(named_sets[name])}"
             pair_width = (10 + len(count_text) * 0.55 * count_line_size) * unit
@@ -1283,11 +1392,6 @@ def draw_evidence_venn(named_sets):
             axes.text(pair_left + 10 * unit, line_top, count_text, ha="left",
                       va="top", fontsize=count_line_size, color=INK_MUTED,
                       zorder=4)
-
-        axes.set_xlim(x_low, x_high)
-        axes.set_ylim(y_low, y_high)
-        axes.set_aspect("equal")
-        axes.axis("off")
 
         exports = export_figure(figure)
 
@@ -1321,7 +1425,7 @@ def evidence_matrix(filtered, names):
     One row per category, ordered for display: by how many candidates cite
     it, then by presence pattern in candidate order -- so categories shared
     by the same candidates sit together -- then alphabetically. Rows are
-    numbered in that order.
+    lettered A, B, C, ... in that order.
     """
     labels = {}
     for items in filtered.values():
@@ -1350,7 +1454,7 @@ def evidence_matrix(filtered, names):
     frame = frame.sort_values(["Cited by", "_pattern", "_label"],
                               ascending=[False, True, True])
     frame = frame.drop(columns=["_pattern", "_label"]).reset_index(drop=True)
-    frame.insert(0, "No.", range(1, len(frame) + 1))
+    frame.insert(0, "ID", [row_id(i) for i in range(len(frame))])
     return frame
 
 
@@ -1359,11 +1463,12 @@ def _fit_text(text, max_chars):
     return text if len(text) <= max_chars else text[: max_chars - 1].rstrip() + "…"
 
 
-def draw_evidence_heatmap(matrix, names):
+def draw_evidence_heatmap(matrix, names, phyla=None):
     """Binary presence/absence heatmap: categories down, candidates across.
 
-    Each row reads "No.  Category" then one cell per candidate and the
-    "Shared by" fraction. Drawn in cell units (1 cell = 1 data unit) on an
+    Each row reads "A  Category" then one cell per candidate and the
+    "Shared by" fraction. Column heads give each candidate's phylum after
+    its name. Drawn in cell units (1 cell = 1 data unit) on an
     axes that fills the figure, with the figure sized from the row/column
     counts, so cells stay square and text sizes stay fixed however many rows
     there are.
@@ -1382,10 +1487,10 @@ def draw_evidence_heatmap(matrix, names):
 
     n_rows, n_cols = len(matrix), len(names)
     labels = [_fit_text(c, label_chars) for c in matrix["Category"]]
-    number_units = len(str(n_rows)) * 0.6 * row_font / ppu
+    number_units = max(len(i) for i in matrix["ID"]) * 0.68 * row_font / ppu
     label_units = max(len(l) for l in labels) * 0.52 * row_font / ppu
     left_units = number_units + 0.45 + label_units + 1.0
-    column_head_units = max(len(abbreviate_species(n)) for n in names) \
+    column_head_units = max(organism_label_chars(n, phyla) for n in names) \
         * 0.52 * head_font / ppu * 0.87 + 1.0
     count_units = 2.2
 
@@ -1397,11 +1502,13 @@ def draw_evidence_heatmap(matrix, names):
         figure = plt.figure(figsize=((x_high - x_low) * cell_in,
                                      (y_bottom - y_top) * cell_in))
         axes = figure.add_axes([0, 0, 1, 1])
+        axes.set_xlim(x_low, x_high)
+        axes.set_ylim(y_bottom, y_top)
+        axes.axis("off")
 
         for col, name in enumerate(names):
-            axes.text(col + 0.5, -0.35, abbreviate_species(name), rotation=60,
-                      rotation_mode="anchor", ha="left", va="bottom",
-                      fontstyle="italic", fontsize=head_font, color=INK)
+            draw_organism_label(axes, col + 0.5, -0.35, name, phyla,
+                                head_font, va="bottom", rotation=60)
 
         axes.text(n_cols + 0.6, -0.35, "Shared by", rotation=60,
                   rotation_mode="anchor", ha="left", va="bottom",
@@ -1415,7 +1522,7 @@ def draw_evidence_heatmap(matrix, names):
         for i, (_, row) in enumerate(matrix.iterrows()):
             y = heading_rows + i
 
-            axes.text(number_right, y + 0.5, str(row["No."]), ha="right",
+            axes.text(number_right, y + 0.5, row["ID"], ha="right",
                       va="center", fontsize=row_font, fontweight="bold",
                       color=INK_MUTED)
             axes.text(number_right + 0.45, y + 0.5, labels[i], ha="left",
@@ -1431,10 +1538,6 @@ def draw_evidence_heatmap(matrix, names):
             axes.text(n_cols + 0.45, y + 0.5, f"{row['Cited by']}/{n_cols}",
                       ha="left", va="center", fontsize=row_font,
                       color=INK_MUTED)
-
-        axes.set_xlim(x_low, x_high)
-        axes.set_ylim(y_bottom, y_top)
-        axes.axis("off")
 
         exports = export_figure(figure)
 
@@ -1467,6 +1570,7 @@ def render_shared_evidence(response_text, table_rows):
     import matplotlib.pyplot as plt
 
     evidence = collect_candidate_evidence(response_text, table_rows)
+    phyla = collect_candidate_phyla(response_text)
 
     if len(evidence) < 2:
         st.info(
@@ -1517,7 +1621,7 @@ def render_shared_evidence(response_text, table_rows):
     heatmap_column, venn_column = st.columns([1, 1])
 
     with heatmap_column:
-        figure, heatmap_exports = draw_evidence_heatmap(matrix, names)
+        figure, heatmap_exports = draw_evidence_heatmap(matrix, names, phyla)
         st.pyplot(figure, use_container_width=True)
         plt.close(figure)
 
@@ -1528,7 +1632,7 @@ def render_shared_evidence(response_text, table_rows):
             st.info("Select at least two candidates for the Venn diagram.")
             venn_exports = None
         else:
-            figure, venn_exports = draw_evidence_venn(named_sets)
+            figure, venn_exports = draw_evidence_venn(named_sets, phyla)
             st.pyplot(figure, use_container_width=True)
             plt.close(figure)
 
@@ -1542,7 +1646,7 @@ def render_shared_evidence(response_text, table_rows):
         "to n."
     )
 
-    csv = matrix[["No.", "Category", "Source"] + names + ["Cited by"]].copy()
+    csv = matrix[["ID", "Category", "Source"] + names + ["Cited by"]].copy()
     csv[names] = csv[names].astype(int)
 
     st.markdown("**Heatmap**")
