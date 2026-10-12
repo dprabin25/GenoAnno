@@ -18,6 +18,7 @@
 # dashboard. All UI code below therefore runs at module level.
 # ============================================================
 
+import functools
 import io
 import json
 import re
@@ -770,33 +771,33 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
 #              explicitly (Lex et al., 2014); members go in the CSV.
 #   Venn     - counts for 2-3 chosen candidates, with optional callouts.
 
-VENN_MAX_SETS = 3
-
 # Brown, blue and orange/gold are reserved in this project's figures for the
 # query bacterium, immune cells and proteins; greens and red carry audit
 # meaning. The set colours avoid all of them.
 #
-# VENN_COLORS carry identity (circle fills, filled header dots). Validated as
-# a categorical palette: lightness band, chroma floor (each >= 0.1 OKLCH, so
-# none reads as grey), all-pairs CVD separation (worst dE 8.1, protan, rose vs
-# teal) and normal-vision separation (worst dE 18.6) all pass. Teal and rose
-# stay apart under protanopia because they differ in LIGHTNESS; a darker rose
-# would collapse onto the teal (dE 2.1).
+# VENN_COLORS carry identity (fills, filled markers), in this fixed order:
+# deep purple, teal, light rose, olive, lavender. Validated as a categorical
+# palette over all pairs: lightness band, chroma floor (each >= 0.1 OKLCH, so
+# none reads as grey), CVD separation (worst dE 8.1, protan, rose vs teal) and
+# normal-vision separation (worst dE 16.3, lavender vs rose) all pass. Teal
+# and rose stay apart under protanopia because they differ in LIGHTNESS; a
+# darker rose collapses onto the teal (dE 2.1).
 #
-# VENN_STROKES draw edges only (circle outlines, dot rims) and supply the
-# >= 3:1 contrast against white that the light rose lacks (2.34 -> 3.45).
-# Edges never carry identity -- the adjacent species titles do -- so the
-# darker rose's similarity to teal under protanopia does not matter there.
+# VENN_STROKES draw edges only (outlines, marker rims). They equal the fills
+# except the rose, whose fill is below 3:1 against white (2.34); its stroke is
+# a darker step of the same hue (3.45). Edges never carry identity -- the
+# adjacent species titles do.
 #
 # Species names are set in ink, never in the set colour.
-VENN_COLORS = ("#5d4a9e", "#048a9c", "#e88ab4")
-VENN_STROKES = ("#5d4a9e", "#048a9c", "#d0679b")
+VENN_COLORS = ("#5d4a9e", "#048a9c", "#e88ab4", "#8a8f2e", "#9e6fd6")
+VENN_STROKES = ("#5d4a9e", "#048a9c", "#d0679b", "#8a8f2e", "#9e6fd6")
 
 # Secondary encoding. Under protanopia the teal and rose fills stay apart on
-# large areas, but on small header dots they converge. Each candidate
-# therefore also has a shape, drawn beside its species title and in every
-# callout header, so identity never rests on colour alone.
-VENN_MARKERS = ("o", "s", "^")
+# large areas, but small markers converge. Each candidate therefore also has
+# a shape (circle, square, triangle, diamond, inverted triangle), drawn beside
+# its species title and in every callout header, so identity never rests on
+# colour alone.
+VENN_MARKERS = ("o", "s", "^", "D", "v")
 
 # Neutral inks shared by every evidence figure.
 INK = "#222222"
@@ -820,7 +821,7 @@ SOURCE_GROUPS = (
     (3, "Protein function families (Table 3)"),
     (2, "KEGG-hit descriptions (Table 2)"),
     (1, "Functional categories (Table 1)"),
-    (None, "Not in Tables 1-4"),
+    (None, "Cited, but not a verbatim row in Tables 1-4"),
 )
 
 TABLE_LABELS = {
@@ -916,6 +917,10 @@ def split_evidence_cell(cell):
     """Cited items from one evidence cell, with table citations and
     discriminating/universal qualifiers removed."""
     text = re.sub(r"[*_`]", "", str(cell))
+
+    # "A (Table 1), B (Table 4)": a citation followed by a comma ends an
+    # item, so treat it as a separator. Commas inside a name are untouched.
+    text = re.sub(r"(\(\s*Tables?\s*\d[^)]*\))\s*,", r"\1;", text, flags=re.IGNORECASE)
     items = []
 
     for piece in re.split(r"\s*(?:;|\n|•)\s*", text):
@@ -934,38 +939,42 @@ def split_evidence_cell(cell):
 def ground_evidence(items, table_rows):
     """{normalised label: (label, table or None)} for a candidate's items.
 
-    An item that does not match a row whole is retried as comma-separated
-    parts, because the model often groups several rows behind one citation
-    ("Table 4: lactate, acetate"). Parts are only used when at least one
-    grounds; otherwise the item is kept whole as ungrounded.
+    Every cited item is kept: matched items carry their verbatim row label and
+    table, unmatched ones are kept as written with table None, so nothing the
+    model cited disappears silently.
+
+    The model lists several items behind one citation, separated by commas
+    ("Glycolysis, Pentose phosphate pathway (Table 4)"), so an item that is
+    not a row as a whole is split on commas. The parts are rebuilt greedily
+    from the left, joining adjacent parts whenever the join is itself a row,
+    so a table row whose name contains a comma ("Mixed acid: Ethanol, Acetate
+    to Acetylaldehyde") is never broken up.
     """
     grounded = {}
 
+    def add(hit):
+        grounded.setdefault(_norm_label(hit[0]), hit)
+
     for item in items:
-        # 1. The whole item is a row label.
         exact = table_rows.get(_norm_label(item))
 
         if exact:
-            grounded[_norm_label(exact[0])] = exact
+            add(exact)
             continue
 
-        # 2. A comma-grouped list of rows. Tried before substring matching,
-        #    which would otherwise ground only the longest row in the list.
         parts = [p.strip() for p in item.split(",") if p.strip()]
-        part_hits = [h for h in (_ground_item(p, table_rows) for p in parts) if h] if len(parts) > 1 else []
+        i = 0
 
-        if part_hits:
-            for hit in part_hits:
-                grounded[_norm_label(hit[0])] = hit
-            continue
-
-        # 3. A row label embedded in longer text.
-        hit = _ground_item(item, table_rows)
-
-        if hit:
-            grounded[_norm_label(hit[0])] = hit
-        else:
-            grounded[_norm_label(item)] = (item, None)
+        while i < len(parts):
+            for j in range(len(parts), i, -1):
+                joined = table_rows.get(_norm_label(", ".join(parts[i:j])))
+                if joined:
+                    add(joined)
+                    i = j
+                    break
+            else:
+                add(_ground_item(parts[i], table_rows) or (parts[i], None))
+                i += 1
 
     return grounded
 
@@ -1058,242 +1067,390 @@ def region_name(mask, names):
     return " ∩ ".join(members) + " only"
 
 
-# Fixed geometry: equal circles, radius 1. Region anchors were checked to sit
-# inside exactly the circles their bitmask names.
-_VENN_LAYOUT = {
-    2: {
-        "centers": [(-0.55, 0.0), (0.55, 0.0)],
-        "regions": {0b01: (-1.0, 0.0), 0b10: (1.0, 0.0), 0b11: (0.0, 0.0)},
-        "titles": [(-0.85, 1.32), (0.85, 1.32)],
-        "limits": ((-1.75, 1.75), (-1.2, 1.65)),
-        "size": (5.2, 4.3),
-    },
-    3: {
-        "centers": [(-0.55, 0.32), (0.55, 0.32), (0.0, -0.63)],
-        "regions": {
-            0b001: (-1.05, 0.60), 0b010: (1.05, 0.60), 0b100: (0.0, -1.25),
-            0b011: (0.0, 0.78), 0b101: (-0.62, -0.38), 0b110: (0.62, -0.38),
-            0b111: (0.0, 0.05),
-        },
-        "titles": [(-0.85, 1.64), (0.85, 1.64), (0.0, -1.74)],
-        "limits": ((-1.75, 1.75), (-2.08, 1.98)),
-        "size": (5.2, 6.0),
-    },
+# Venn geometry for 2-5 sets, in data units (circle radius = 1).
+#
+# Each set is an ellipse (cx, cy, width, height, angle in degrees). 2 and 3
+# sets are circles. 4 and 5 sets use the standard ellipse arrangements (as in
+# pyvenn), rescaled to these units. They are true Venn diagrams: every one of
+# the 2^n - 1 intersections exists as a region, which _venn_geometry checks
+# on every call rather than trusting the constants. Six or more sets have no
+# legible Venn layout; beyond five, the heatmap and UpSet views carry the
+# comparison.
+VENN_MAX_SETS = 5
+
+_VENN_ELLIPSES = {
+    2: [(-0.55, 0.0, 2.0, 2.0, 0.0), (0.55, 0.0, 2.0, 2.0, 0.0)],
+    3: [(-0.55, 0.32, 2.0, 2.0, 0.0), (0.55, 0.32, 2.0, 2.0, 0.0),
+        (0.0, -0.63, 2.0, 2.0, 0.0)],
+    4: [(-0.600, -0.400, 2.88, 1.80, 140.0), (-0.200, 0.000, 2.88, 1.80, 140.0),
+        (0.176, 0.000, 2.88, 1.80, 40.0), (0.576, -0.400, 2.88, 1.80, 40.0)],
+    5: [(-0.288, -0.204, 3.48, 2.00, 155.0), (-0.124, 0.172, 3.48, 2.00, 82.0),
+        (0.232, 0.092, 3.48, 2.00, 10.0), (0.312, -0.272, 3.48, 2.00, 118.0),
+        (-0.044, -0.468, 3.48, 2.00, 46.0)],
 }
 
-# Callout boxes: each non-empty region's number is joined by a leader line to
-# a box outside the circles listing that region's items. Boxes go in a column
-# on the side their region lies on (centre regions fill whichever column is
-# shorter), each as close to level with its number as the boxes above allow,
-# so leaders stay short and do not cross. A box header marks the region with
-# the set colours -- filled dot = in that set, hollow = not -- which matches
-# the circle titles and avoids writing species names in non-italic type.
-_CALLOUT = {
-    "width": 1.95,          # box width, data units (circle radius = 1)
-    "gap_x": 0.25,          # diagram edge to box column
-    "gap_y": 0.14,          # between stacked boxes
-    "pad": 0.08,            # inside the box
-    "fig_width": 9.5,       # inches, whole figure with callouts
-    "header_size": 8,
-    "item_size": 7,
-    "line_spacing": 1.3,
-    "max_lines": 12,        # per box, including any "+N more"
+# For 2-3 circles the titles sit above (and, for the third circle, below)
+# the diagram, the familiar layout. Count anchors are computed for every n.
+_VENN_HAND_PLACED = {
+    2: {"titles": [(-0.85, 1.10, "center", "bottom"),
+                   (0.85, 1.10, "center", "bottom")]},
+    3: {"titles": [(-0.85, 1.42, "center", "bottom"),
+                   (0.85, 1.42, "center", "bottom"),
+                   (0.0, -1.72, "center", "top")]},
 }
 
-_VENN_COUNT_SIZE = 11
+
+def _ellipse_half_extent(width, height, angle):
+    import math
+    a, b, t = width / 2, height / 2, math.radians(angle)
+    return (math.hypot(a * math.cos(t), b * math.sin(t)),
+            math.hypot(a * math.sin(t), b * math.cos(t)))
 
 
-def _callout_lines(members, labels, max_chars, max_lines):
-    """Bulleted item lines for one box, pathways (Table 4) first.
+def _inside_ellipse(ellipse, x, y):
+    import numpy as np
+    cx, cy, width, height, angle = ellipse
+    t = np.radians(angle)
+    dx, dy = x - cx, y - cy
+    u = dx * np.cos(t) + dy * np.sin(t)
+    v = -dx * np.sin(t) + dy * np.cos(t)
+    return (u / (width / 2)) ** 2 + (v / (height / 2)) ** 2 <= 1.0
 
-    A name longer than the box wraps onto one continuation line and is cut
-    with an ellipsis after that; items that do not fit end in "+N more".
+
+@functools.lru_cache(maxsize=None)
+def _venn_geometry(n_sets):
+    """Region anchors and title anchors for an n-set Venn.
+
+    Rasterises the ellipses, labels every pixel with the bitmask of the sets
+    containing it, and anchors each region's text at its deepest point (the
+    pixel farthest from the region's edge, found by eroding all regions at
+    once). For each region it also returns the inscribed radius and the
+    horizontal and vertical extent through the anchor, which decide how large
+    the count can be and how many item names fit under it. Raises if any of
+    the 2^n - 1 regions is missing, so a wrong layout is never drawn.
     """
+    import numpy as np
+
+    ellipses = _VENN_ELLIPSES[n_sets]
+    extents = [_ellipse_half_extent(w, h, a) for _, _, w, h, a in ellipses]
+    x_low = min(e[0] - ext[0] for e, ext in zip(ellipses, extents)) - 0.05
+    x_high = max(e[0] + ext[0] for e, ext in zip(ellipses, extents)) + 0.05
+    y_low = min(e[1] - ext[1] for e, ext in zip(ellipses, extents)) - 0.05
+    y_high = max(e[1] + ext[1] for e, ext in zip(ellipses, extents)) + 0.05
+
+    pixel = max(x_high - x_low, y_high - y_low) / 480
+    xs = np.arange(x_low, x_high, pixel)
+    ys = np.arange(y_low, y_high, pixel)
+    grid_x, grid_y = np.meshgrid(xs, ys)
+
+    label = np.zeros(grid_x.shape, dtype=np.int64)
+    for index, ellipse in enumerate(ellipses):
+        label |= _inside_ellipse(ellipse, grid_x, grid_y).astype(np.int64) << index
+
+    # Erode every region together: a pixel survives a round while all four
+    # neighbours are still alive and in the same region.
+    depth = np.zeros(label.shape, dtype=np.int32)
+    alive = label > 0
+    while alive.any():
+        depth[alive] += 1
+        same = np.ones(label.shape, dtype=bool)
+        for shift, axis in ((1, 0), (-1, 0), (1, 1), (-1, 1)):
+            same &= np.roll(alive, shift, axis) & (np.roll(label, shift, axis) == label)
+        alive &= same
+
+    regions = {}
+    for mask in range(1, 2 ** n_sets):
+        selected = label == mask
+        if not selected.any():
+            raise ValueError(f"{n_sets}-set layout has no region for {mask:0{n_sets}b}")
+        deepest = depth[selected].max()
+        rows, cols = np.nonzero(selected & (depth == deepest))
+        pick = np.argmin((rows - rows.mean()) ** 2 + (cols - cols.mean()) ** 2)
+        row, col = int(rows[pick]), int(cols[pick])
+
+        # Room for text at the anchor: the region's horizontal and vertical
+        # extent through that point.
+        line = label[row] == mask
+        left = col
+        while left > 0 and line[left - 1]:
+            left -= 1
+        right = col
+        while right < line.size - 1 and line[right + 1]:
+            right += 1
+        column = label[:, col] == mask
+        low = row
+        while low > 0 and column[low - 1]:
+            low -= 1
+        high = row
+        while high < column.size - 1 and column[high + 1]:
+            high += 1
+
+        # Row-by-row extent of the region through the anchor column, so the
+        # text block can be sized to the narrowest row it actually covers.
+        profile = []
+        for r in range(low, high + 1):
+            run = label[r] == mask
+            l = r_ = col
+            while l > 0 and run[l - 1]:
+                l -= 1
+            while r_ < run.size - 1 and run[r_ + 1]:
+                r_ += 1
+            profile.append((float(ys[r]), float(xs[l] - pixel / 2),
+                            float(xs[r_] + pixel / 2)))
+
+        regions[mask] = {
+            "x": float(xs[col]), "y": float(ys[row]),
+            "radius": float(deepest * pixel),
+            "width": float((right - left + 1) * pixel),
+            "height": float((high - low + 1) * pixel),
+            "profile": tuple(profile),
+        }
+
+    if n_sets in _VENN_HAND_PLACED:
+        titles = list(_VENN_HAND_PLACED[n_sets]["titles"])
+    else:
+        # Title just outside the diagram, on the ray from the diagram's centre
+        # through the set's exclusive region.
+        centre_x = sum(e[0] for e in ellipses) / n_sets
+        centre_y = sum(e[1] for e in ellipses) / n_sets
+        titles = []
+
+        for index in range(n_sets):
+            x, y = regions[1 << index]["x"], regions[1 << index]["y"]
+            dx, dy = x - centre_x, y - centre_y
+            length = (dx ** 2 + dy ** 2) ** 0.5 or 1.0
+            dx, dy = dx / length, dy / length
+
+            while any(_inside_ellipse(e, x, y) for e in ellipses):
+                x, y = x + dx * pixel, y + dy * pixel
+
+            x, y = x + dx * 0.08, y + dy * 0.08
+            ha = "left" if dx > 0.35 else "right" if dx < -0.35 else "center"
+            va = "bottom" if dy > 0.35 else "top" if dy < -0.35 else "center"
+            titles.append((x, y, ha, va))
+
+    return {
+        "ellipses": ellipses,
+        "regions": regions,
+        "titles": titles,
+        "bounds": ((x_low + 0.05, x_high - 0.05), (y_low + 0.05, y_high - 0.05)),
+    }
+
+
+_VENN_COUNT_SIZE = 10.5      # pt, count in a region with room for it
+_VENN_MIN_COUNT_SIZE = 5.5   # pt, smallest count in a cramped region
+_VENN_ITEM_SIZE = 6.5        # pt, item names under the count
+_VENN_ITEM_SPACING = 1.25
+INK_ZERO = "#a3a3a3"         # empty regions recede; populated ones carry the eye
+
+
+def _band_width(room, centre_x, top, bottom):
+    """Widest text, centred on centre_x, that stays inside the region for
+    every row between bottom and top (data units). 0 if the band leaves the
+    region vertically."""
+    rows = [(left, right) for y, left, right in room["profile"]
+            if bottom <= y <= top]
+    profile_low = room["profile"][0][0]
+    profile_high = room["profile"][-1][0]
+
+    if not rows or bottom < profile_low or top > profile_high:
+        return 0.0
+
+    return 2 * min(min(centre_x - left, right - centre_x) for left, right in rows)
+
+
+_VENN_INDEX_SIZE = 7          # pt, item numbers under a region's count
+_VENN_KEY_SIZE = 7.5          # pt, the numbered key beside the diagram
+
+
+def _layout_region_indices(numbers, room, count_size, points_per_unit):
+    """Item numbers for one region, wrapped to the room the region has.
+
+    Numbers are short, so they fit even thin petals; the width is measured
+    across the block's full height. Returns ([], count height) when not even
+    one line fits, leaving the count alone (the key and heatmap still list
+    the items)."""
     import textwrap
 
-    ordered = sorted(members, key=lambda m: (-(labels[m][1] or 0), labels[m][0].lower()))
-    lines = []
-    shown = 0
+    unit = 1.0 / points_per_unit
+    line = _VENN_INDEX_SIZE * 1.25 * unit
+    count_height = count_size * 1.3 * unit
+    char_width = 0.56 * _VENN_INDEX_SIZE * unit
+    text = ", ".join(str(n) for n in sorted(numbers))
 
-    for index, member in enumerate(ordered):
-        wrapped = textwrap.wrap(
-            " ".join(labels[member][0].split()), width=max_chars - 2,
-            max_lines=2, placeholder=" …",
-        ) or [labels[member][0]]
-        block = ["• " + wrapped[0]] + ["   " + w for w in wrapped[1:]]
-        reserve = 1 if index < len(ordered) - 1 else 0
+    for n_lines in range(1, max(1, int(room["height"] / line)) + 1):
+        height = count_height + n_lines * line
+        top = room["y"] + height / 2
+        chars = int(_band_width(room, room["x"], top, top - height) * 0.9 / char_width)
 
-        if len(lines) + len(block) + reserve > max_lines:
-            break
+        if chars < 1:
+            continue
 
-        lines.extend(block)
-        shown += 1
+        lines = textwrap.wrap(text, width=max(chars, 2), break_long_words=False)
+        if len(lines) <= n_lines and all(len(l) <= chars for l in lines):
+            return lines, count_height + len(lines) * line
 
-    if shown < len(ordered):
-        lines.append(f"+{len(ordered) - shown} more (see table)")
-
-    return lines
+    return [], count_height
 
 
-def draw_evidence_venn(named_sets, labels=None, show_items=True):
-    """Draw a 2- or 3-set Venn of region counts, optionally with callout
-    boxes listing each region's items.
+def draw_evidence_venn(named_sets, labels=None, numbers=None, show_items=True):
+    """Draw an n-set Venn (2-5) of exclusive-region counts.
 
-    labels maps each element key to (verbatim label, table) and is needed
-    only for the callouts. Returns (figure, {"svg", "pdf", "png": bytes}).
-    Exports are written inside the same style context so text stays editable
-    in the SVG and embedded as TrueType in the PDF.
+    Each region shows its count; with show_items it also shows the numbers
+    of the items it holds, and a numbered key beside the diagram gives their
+    names. The numbers are the heatmap's row numbers (numbers maps element
+    key -> number), so the two figures can be read against each other.
+    Empty regions are drawn in a light grey so the populated ones carry the
+    eye. Returns (figure, {"svg", "pdf", "png": bytes}).
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle, FancyBboxPatch
+    from matplotlib.patches import Ellipse
 
     names = list(named_sets)
-    layout = _VENN_LAYOUT[len(names)]
+    n_sets = len(names)
+    geometry = _venn_geometry(n_sets)
     regions = venn_regions(named_sets)
-    show_items = bool(show_items and labels and regions)
+    show_items = bool(show_items and labels)
 
-    (dx_low, dx_high), (dy_low, dy_high) = layout["limits"]
-    c = _CALLOUT
+    if show_items and not numbers:
+        ordered = sorted(set().union(*named_sets.values()),
+                         key=lambda k: labels[k][0].lower())
+        numbers = {k: i for i, k in enumerate(ordered, start=1)}
 
+    (bx_low, bx_high), (by_low, by_high) = geometry["bounds"]
+    target_width_in = {2: 5.0, 3: 5.0, 4: 6.4, 5: 7.6}[n_sets]
+    points_per_unit = 72 * target_width_in / (bx_high - bx_low + 1.6)
+    unit = 1.0 / points_per_unit
+
+    name_size, count_line_size = 10, 9
+    title_height = (name_size * 1.25 + count_line_size * 1.3) * unit
+
+    title_blocks = []
+    for name, (x, y, ha, va) in zip(names, geometry["titles"]):
+        count_text = f"n = {len(named_sets[name])}"
+        width = max(len(abbreviate_species(name)) * 0.55 * name_size,
+                    10 + len(count_text) * 0.55 * count_line_size) * unit
+        left = x if ha == "left" else x - width if ha == "right" else x - width / 2
+        bottom = y if va == "bottom" else y - title_height if va == "top" \
+            else y - title_height / 2
+        title_blocks.append((left, bottom, width, ha))
+
+    x_low = min([bx_low] + [b[0] for b in title_blocks]) - 0.08
+    x_high = max([bx_high] + [b[0] + b[2] for b in title_blocks]) + 0.08
+    y_low = min([by_low] + [b[1] for b in title_blocks]) - 0.08
+    y_high = max([by_high] + [b[1] + title_height for b in title_blocks]) + 0.08
+
+    # ---- numbered key, in columns to the right of the diagram
+    key_entries = []
+    key_columns = []
     if show_items:
-        x_low = dx_low - c["gap_x"] - c["width"] - 0.05
-        x_high = dx_high + c["gap_x"] + c["width"] + 0.05
-        points_per_unit = 72 * c["fig_width"] / (x_high - x_low)
-    else:
-        x_low, x_high = dx_low, dx_high
-        points_per_unit = 72 * min(layout["size"][0] / (x_high - x_low),
-                                   layout["size"][1] / (dy_high - dy_low))
+        present = sorted(set().union(*named_sets.values()), key=lambda k: numbers[k])
+        key_entries = [(numbers[k], _fit_text(labels[k][0], 56)) for k in present]
 
-    unit = 1.0 / points_per_unit          # data units per point
-    header_height = c["header_size"] * 1.6 * unit
-    line_height = c["item_size"] * c["line_spacing"] * unit
-    dot_step = c["header_size"] * 1.25 * unit
+        key_line = _VENN_KEY_SIZE * 1.45 * unit
+        heading = _VENN_KEY_SIZE * 2.0 * unit
+        rows_per_column = max(1, int((y_high - y_low - heading) / key_line))
+        number_width = len(str(max(n for n, _ in key_entries))) * 0.6 * _VENN_KEY_SIZE * unit
+        gap = 4 * unit
+        column_x = x_high + 0.3
 
-    # ---- callout geometry, computed before drawing so the axes can grow
-    boxes = []
+        for start in range(0, len(key_entries), rows_per_column):
+            chunk = key_entries[start:start + rows_per_column]
+            text_width = max(len(t) for _, t in chunk) * 0.55 * _VENN_KEY_SIZE * unit
+            key_columns.append((column_x, chunk))
+            column_x += number_width + gap + text_width + 0.25
 
-    if show_items:
-        max_chars = int((c["width"] - 2 * c["pad"]) * points_per_unit
-                        / (0.53 * c["item_size"]))
-        filled = [m for m in layout["regions"] if regions.get(m)]
+        key_height = heading + min(len(key_entries), rows_per_column) * key_line
+        key_top = (y_low + y_high) / 2 + key_height / 2
+        x_high = column_x
 
-        left = [m for m in filled if layout["regions"][m][0] < 0]
-        right = [m for m in filled if layout["regions"][m][0] > 0]
-        centre = sorted((m for m in filled if layout["regions"][m][0] == 0),
-                        key=lambda m: -layout["regions"][m][1])
+    fill_alpha = 0.22 if n_sets <= 3 else 0.16
 
-        for mask in centre:
-            (left if len(left) < len(right) else right).append(mask)
-
-        for side, column in (("left", left), ("right", right)):
-            # Top to bottom; at equal height the outer region goes first, so
-            # it keeps the level slot and the inner region's leader slants
-            # past the outer number instead of running through it.
-            column.sort(key=lambda m: (-layout["regions"][m][1],
-                                       -abs(layout["regions"][m][0])))
-            box_x = (dx_low - c["gap_x"] - c["width"]) if side == "left" \
-                else (dx_high + c["gap_x"])
-            previous_bottom = float("inf")
-
-            for mask in column:
-                lines = _callout_lines(regions[mask], labels, max_chars,
-                                       c["max_lines"])
-                height = header_height + len(lines) * line_height + 2 * c["pad"]
-                anchor_y = layout["regions"][mask][1]
-                centre_y = min(anchor_y, previous_bottom - c["gap_y"] - height / 2)
-                previous_bottom = centre_y - height / 2
-                boxes.append({
-                    "mask": mask, "side": side, "x": box_x, "lines": lines,
-                    "bottom": centre_y - height / 2, "height": height,
-                    "centre_y": centre_y,
-                })
-
-    y_low = min([dy_low] + [b["bottom"] - 0.05 for b in boxes])
-    y_high = max([dy_high] + [b["bottom"] + b["height"] + 0.05 for b in boxes])
-    width_in = (x_high - x_low) * points_per_unit / 72
-    height_in = (y_high - y_low) * points_per_unit / 72
-
-    style = FIGURE_STYLE
-
-    with plt.rc_context(style):
-        figure = plt.figure(figsize=(width_in, height_in))
+    with plt.rc_context(FIGURE_STYLE):
+        figure = plt.figure(figsize=((x_high - x_low) * points_per_unit / 72,
+                                     (y_high - y_low) * points_per_unit / 72))
         axes = figure.add_axes([0, 0, 1, 1])
 
-        for (x, y), fill, stroke in zip(layout["centers"], VENN_COLORS,
-                                        VENN_STROKES):
-            axes.add_patch(Circle((x, y), 1.0, facecolor=fill, alpha=0.22,
-                                  edgecolor="none", zorder=1))
-            axes.add_patch(Circle((x, y), 1.0, facecolor="none",
-                                  edgecolor=stroke, linewidth=1.4, zorder=2))
+        for index, (cx, cy, w, h, angle) in enumerate(geometry["ellipses"]):
+            axes.add_patch(Ellipse((cx, cy), w, h, angle=angle,
+                                   facecolor=VENN_COLORS[index], alpha=fill_alpha,
+                                   edgecolor="none", zorder=1))
+            axes.add_patch(Ellipse((cx, cy), w, h, angle=angle, facecolor="none",
+                                   edgecolor=VENN_STROKES[index],
+                                   linewidth=1.4 if n_sets <= 3 else 1.1,
+                                   zorder=2))
 
-        for mask, (x, y) in layout["regions"].items():
-            axes.text(x, y, str(len(regions.get(mask, []))), ha="center",
-                      va="center", fontsize=_VENN_COUNT_SIZE, color="#222222",
+        for mask, room in geometry["regions"].items():
+            members = regions.get(mask, [])
+            count_size = max(_VENN_MIN_COUNT_SIZE,
+                             min(_VENN_COUNT_SIZE, room["radius"] * points_per_unit * 0.8))
+
+            if not members:
+                axes.text(room["x"], room["y"], "0", ha="center", va="center",
+                          fontsize=count_size, color=INK_ZERO, zorder=4)
+                continue
+
+            lines, block_height = ([], count_size * 1.3 * unit)
+            if show_items:
+                lines, block_height = _layout_region_indices(
+                    [numbers[m] for m in members], room, count_size,
+                    points_per_unit)
+
+            top = room["y"] + block_height / 2
+            axes.text(room["x"], top, str(len(members)), ha="center", va="top",
+                      fontsize=count_size, fontweight="bold", color=INK,
                       zorder=4)
+            if lines:
+                axes.text(room["x"], top - count_size * 1.3 * unit,
+                          "\n".join(lines), ha="center", va="top",
+                          fontsize=_VENN_INDEX_SIZE, linespacing=1.25,
+                          color=INK_MUTED, zorder=4)
 
-        for box in boxes:
-            anchor_x, anchor_y = layout["regions"][box["mask"]]
-            edge_x = box["x"] + c["width"] if box["side"] == "left" else box["x"]
-            dx, dy = edge_x - anchor_x, box["centre_y"] - anchor_y
-            length = max((dx ** 2 + dy ** 2) ** 0.5, 1e-9)
-            start_offset = _VENN_COUNT_SIZE * 0.85 * unit
+        # Title block: italic name, then marker (shape + colour) and n.
+        for index, (name, (left, bottom, width, ha)) in enumerate(
+                zip(names, title_blocks)):
+            top = bottom + title_height
+            anchor_x = left if ha == "left" else left + width if ha == "right" \
+                else left + width / 2
+            axes.text(anchor_x, top, abbreviate_species(name), ha=ha, va="top",
+                      fontstyle="italic", fontsize=name_size, color=INK, zorder=4)
 
-            axes.plot(
-                [anchor_x + dx / length * start_offset, edge_x],
-                [anchor_y + dy / length * start_offset, box["centre_y"]],
-                color="#8a8a8a", linewidth=0.6, solid_capstyle="round", zorder=3,
-            )
-            axes.add_patch(FancyBboxPatch(
-                (box["x"], box["bottom"]), c["width"], box["height"],
-                boxstyle=f"round,pad=0,rounding_size={4 * unit}",
-                facecolor="white", edgecolor="#b8b8b8", linewidth=0.6, zorder=3,
-            ))
-
-            header_y = box["bottom"] + box["height"] - c["pad"] - header_height / 2
-            dot_x = box["x"] + c["pad"] + dot_step / 2
-
-            for index in range(len(names)):
-                member = box["mask"] >> index & 1
-                axes.plot(dot_x + index * dot_step, header_y,
-                          marker=VENN_MARKERS[index],
-                          markersize=c["header_size"] * 0.62,
-                          markerfacecolor=VENN_COLORS[index] if member else "white",
-                          markeredgecolor=VENN_STROKES[index],
-                          markeredgewidth=0.9,
-                          linestyle="none", zorder=4)
-
-            axes.text(dot_x + len(names) * dot_step - dot_step * 0.1, header_y,
-                      f"n = {len(regions[box['mask']])}", ha="left", va="center",
-                      fontsize=c["header_size"], fontweight="bold",
-                      color="#222222", zorder=4)
-            axes.text(box["x"] + c["pad"],
-                      box["bottom"] + box["height"] - c["pad"] - header_height,
-                      "\n".join(box["lines"]), ha="left", va="top",
-                      fontsize=c["item_size"], linespacing=c["line_spacing"],
-                      color="#333333", zorder=4)
-
-        for index, (name, (x, y)) in enumerate(zip(names, layout["titles"])):
-            below = y < 0
-            axes.text(x, y, abbreviate_species(name), ha="center",
-                      va="top" if below else "bottom", fontstyle="italic",
-                      fontsize=10, color=INK, zorder=4)
-            # Marker + "n = k" centred as one unit under the name; the shape
-            # matches the one in the callout headers.
             count_text = f"n = {len(named_sets[name])}"
-            line_y = y - (13 if below else 2) * unit
-            text_width = len(count_text) * 0.55 * 9 * unit
-            marker_width, marker_gap = 7 * unit, 3 * unit
-            left = x - (marker_width + marker_gap + text_width) / 2
-            axes.plot(left + marker_width / 2, line_y - 4.6 * unit,
+            pair_width = (10 + len(count_text) * 0.55 * count_line_size) * unit
+            pair_left = left if ha == "left" else left + width - pair_width \
+                if ha == "right" else anchor_x - pair_width / 2
+            line_top = top - name_size * 1.25 * unit
+
+            axes.plot(pair_left + 3.5 * unit, line_top - 4.6 * unit,
                       marker=VENN_MARKERS[index], markersize=6,
                       markerfacecolor=VENN_COLORS[index],
                       markeredgecolor=VENN_STROKES[index],
                       markeredgewidth=0.9, linestyle="none", zorder=4)
-            axes.text(left + marker_width + marker_gap, line_y, count_text,
-                      ha="left", va="top", fontsize=9, color=INK_MUTED,
+            axes.text(pair_left + 10 * unit, line_top, count_text, ha="left",
+                      va="top", fontsize=count_line_size, color=INK_MUTED,
                       zorder=4)
+
+        # Key: bold number, then the item's full name.
+        if key_columns:
+            key_line = _VENN_KEY_SIZE * 1.45 * unit
+            number_width = len(str(max(n for n, _ in key_entries))) * 0.6 \
+                * _VENN_KEY_SIZE * unit
+            axes.text(key_columns[0][0], key_top, "Items", ha="left", va="top",
+                      fontsize=_VENN_KEY_SIZE + 0.5, fontweight="bold",
+                      color=INK)
+
+            for column_x, chunk in key_columns:
+                y = key_top - _VENN_KEY_SIZE * 2.0 * unit
+                for number, text in chunk:
+                    axes.text(column_x + number_width, y, str(number),
+                              ha="right", va="top", fontsize=_VENN_KEY_SIZE,
+                              fontweight="bold", color=INK_MUTED)
+                    axes.text(column_x + number_width + 4 * unit, y, text,
+                              ha="left", va="top", fontsize=_VENN_KEY_SIZE,
+                              color=INK)
+                    y -= key_line
 
         axes.set_xlim(x_low, x_high)
         axes.set_ylim(y_low, y_high)
@@ -1362,7 +1519,12 @@ def evidence_matrix(filtered, names):
     frame["_label"] = frame["Item"].str.lower()
     frame = frame.sort_values(["_group", "Cited by", "_pattern", "_label"],
                               ascending=[True, False, True, True])
-    return frame.drop(columns=["_pattern", "_label"]).reset_index(drop=True)
+    frame = frame.drop(columns=["_pattern", "_label"]).reset_index(drop=True)
+
+    # One number per item, in heatmap row order. The Venn regions cite items
+    # by these numbers, so a reader can go from a region straight to its rows.
+    frame.insert(0, "No.", range(1, len(frame) + 1))
+    return frame
 
 
 def _fit_text(text, max_chars):
@@ -1400,7 +1562,7 @@ def draw_evidence_heatmap(matrix, names):
 
     n_cols = len(names)
     longest = max(len(_fit_text(r["Item"], label_chars)) for _, r in matrix.iterrows())
-    label_units = longest * 0.52 * row_font / ppu + 0.6
+    label_units = longest * 0.52 * row_font / ppu + 1.55
     column_head_units = max(len(abbreviate_species(n)) for n in names) * 0.52 * head_font / ppu * 0.87 + 1.0
     count_units = 2.2
 
@@ -1430,8 +1592,11 @@ def draw_evidence_heatmap(matrix, names):
                           [y + 0.98, y + 0.98], color=RULE, linewidth=0.5)
                 continue
 
-            axes.text(-0.3, y + 0.5, _fit_text(payload["Item"], label_chars),
+            axes.text(-1.25, y + 0.5, _fit_text(payload["Item"], label_chars),
                       ha="right", va="center", fontsize=row_font, color=INK)
+            axes.text(-0.3, y + 0.5, str(payload["No."]), ha="right",
+                      va="center", fontsize=row_font, fontweight="bold",
+                      color=INK_MUTED)
 
             for col, name in enumerate(names):
                 axes.add_patch(Rectangle(
@@ -1619,11 +1784,12 @@ def render_shared_evidence(response_text, table_rows):
     with filter_right:
         grounded_only = st.checkbox(
             "Only items that match a table row",
-            value=True,
+            value=False,
             key="web6_venn_grounded_only",
-            help="Cited items that do not appear as a row in Tables 1-4 break "
-                 "the prompt's grounding rule. Unticking includes them, labelled "
-                 "'not in Tables 1-4'.",
+            help="By default every pathway or item the candidate table cites "
+                 "is shown. Items that are not a verbatim row of Tables 1-4 "
+                 "break the prompt's grounding rule and are grouped separately "
+                 "in the heatmap; tick this to drop them from every view.",
         )
 
     filtered = filter_evidence(evidence, set(tables), grounded_only)
@@ -1661,12 +1827,13 @@ def render_shared_evidence(response_text, table_rows):
         st.caption(
             "Filled cell = the candidate's evidence cell cites that row. Rows "
             "are grouped by source table, then ordered by how many candidates "
-            "share them; candidates are in the model's confidence order. "
+            "share them; candidates are in the model's confidence order. The "
+            "bold row numbers are the ones the Venn tab uses. "
             "Labels longer than 72 characters are shortened; the CSV has them "
             "in full."
         )
 
-        csv = matrix[["Item", "Source"] + names + ["Cited by"]].copy()
+        csv = matrix[["No.", "Item", "Source"] + names + ["Cited by"]].copy()
         csv[names] = csv[names].astype(int)
         _figure_downloads(exports, "candidate_evidence_heatmap",
                           "Matrix (CSV)", csv, "candidate_evidence_matrix.csv")
@@ -1707,22 +1874,34 @@ def render_shared_evidence(response_text, table_rows):
                           "Members (CSV)", pd.DataFrame(long_rows),
                           "candidate_evidence_upset_members.csv")
 
-    # ---- Venn: counts for 2-3 chosen candidates
+    # ---- Venn: one set per candidate, up to five
     with venn_tab:
+        if len(names) > VENN_MAX_SETS:
+            st.caption(
+                f"The model returned {len(names)} candidates. A Venn diagram is "
+                f"legible for at most {VENN_MAX_SETS} sets, so the top "
+                f"{VENN_MAX_SETS} by confidence are drawn; the heatmap and "
+                "UpSet tabs cover all of them."
+            )
+
+        # The key carries this result's candidate list, so a new analysis
+        # starts from its own candidates (all of them, up to five) instead of
+        # a selection remembered from a previous run.
         chosen = st.multiselect(
             f"Candidates in the diagram (2-{VENN_MAX_SETS})",
             options=names,
             default=names[:VENN_MAX_SETS],
             max_selections=VENN_MAX_SETS,
-            key="web6_venn_candidates",
+            key="web6_venn_candidates_" + str(abs(hash(tuple(names)))),
         )
+
         show_items = st.checkbox(
-            "List each region's items in boxes beside the diagram",
+            "Show item numbers and key",
             value=True,
             key="web6_venn_show_items",
-            help="Each number is joined to a box listing its items. A box shows "
-                 "up to 12 lines and ends in '+N more' beyond that; the region "
-                 "table below always has the full list.",
+            help="Each region lists the numbers of its items under the count; "
+                 "the key beside the diagram names them. The numbers are the "
+                 "heatmap's row numbers.",
         )
 
         if len(chosen) < 2:
@@ -1740,16 +1919,18 @@ def render_shared_evidence(response_text, table_rows):
             for key, value in filtered[name].items():
                 labels.setdefault(key, value)
 
-        figure, exports = draw_evidence_venn(named_sets, labels, show_items)
+        numbers = dict(zip(matrix["key"], matrix["No."]))
+        figure, exports = draw_evidence_venn(named_sets, labels, numbers,
+                                             show_items)
         st.pyplot(figure, use_container_width=True)
         plt.close(figure)
 
         st.caption(
-            "Circle size is fixed and not proportional to n."
-            + (" In each box, filled markers (the shape and colour shown "
-               "beside each name) mark the candidates the region belongs "
-               "to; crowded boxes are truncated and the table below "
-               "gives every item." if show_items else "")
+            "The same items as the heatmap, drawn as sets. Each bold count "
+            "is the number of items cited by exactly that combination of "
+            "candidates; the smaller numbers under it are the items' heatmap "
+            "row numbers, named in the key. Shape size is fixed and not "
+            "proportional to n."
         )
 
         region_rows = []
@@ -1763,12 +1944,15 @@ def render_shared_evidence(response_text, table_rows):
             region_rows.append({
                 "Region": title,
                 "Items": len(members),
-                "Members": "; ".join(labels[m][0] for m in members),
+                "Members": "; ".join(
+                    f"{numbers[m]}. {labels[m][0]}"
+                    for m in sorted(members, key=lambda k: numbers[k])
+                ),
             })
             long_rows.extend(
-                {"Region": title, "Item": labels[m][0],
+                {"Region": title, "No.": numbers[m], "Item": labels[m][0],
                  "Source": _table_tag(labels[m][1])}
-                for m in members
+                for m in sorted(members, key=lambda k: numbers[k])
             )
 
         st.dataframe(pd.DataFrame(region_rows), use_container_width=True,
