@@ -774,18 +774,36 @@ VENN_MAX_SETS = 3
 
 # Brown, blue and orange/gold are reserved in this project's figures for the
 # query bacterium, immune cells and proteins; greens and red carry audit
-# meaning. The set colours avoid all of them, and separate by lightness as well
-# as hue so every pair stays distinct under protan/deutan/tritan simulation
-# (validated: worst all-pairs CVD dE 11.5, normal-vision dE 16.9). The rose is
-# too light for text, so species names are set in ink and colour is carried by
-# the marks only.
-VENN_COLORS = ("#5d4a9e", "#1e7470", "#e88ab4")
+# meaning. The set colours avoid all of them.
+#
+# VENN_COLORS carry identity (circle fills, filled header dots). Validated as
+# a categorical palette: lightness band, chroma floor (each >= 0.1 OKLCH, so
+# none reads as grey), all-pairs CVD separation (worst dE 8.1, protan, rose vs
+# teal) and normal-vision separation (worst dE 18.6) all pass. Teal and rose
+# stay apart under protanopia because they differ in LIGHTNESS; a darker rose
+# would collapse onto the teal (dE 2.1).
+#
+# VENN_STROKES draw edges only (circle outlines, dot rims) and supply the
+# >= 3:1 contrast against white that the light rose lacks (2.34 -> 3.45).
+# Edges never carry identity -- the adjacent species titles do -- so the
+# darker rose's similarity to teal under protanopia does not matter there.
+#
+# Species names are set in ink, never in the set colour.
+VENN_COLORS = ("#5d4a9e", "#048a9c", "#e88ab4")
+VENN_STROKES = ("#5d4a9e", "#048a9c", "#d0679b")
+
+# Secondary encoding. Under protanopia the teal and rose fills stay apart on
+# large areas, but on small header dots they converge. Each candidate
+# therefore also has a shape, drawn beside its species title and in every
+# callout header, so identity never rests on colour alone.
+VENN_MARKERS = ("o", "s", "^")
 
 # Neutral inks shared by every evidence figure.
 INK = "#222222"
 INK_MUTED = "#555555"
 MARK_DARK = "#3d3d3d"
-MARK_EMPTY = "#ececec"
+MARK_EMPTY = "#ececec"          # absent heatmap cell (present vs absent 9.2:1)
+MARK_ABSENT_DOT = "#cccccc"     # absent UpSet dot; stays visible on row bands
 RULE = "#b8b8b8"
 
 FIGURE_STYLE = {
@@ -1203,11 +1221,12 @@ def draw_evidence_venn(named_sets, labels=None, show_items=True):
         figure = plt.figure(figsize=(width_in, height_in))
         axes = figure.add_axes([0, 0, 1, 1])
 
-        for (x, y), color in zip(layout["centers"], VENN_COLORS):
-            axes.add_patch(Circle((x, y), 1.0, facecolor=color, alpha=0.22,
+        for (x, y), fill, stroke in zip(layout["centers"], VENN_COLORS,
+                                        VENN_STROKES):
+            axes.add_patch(Circle((x, y), 1.0, facecolor=fill, alpha=0.22,
                                   edgecolor="none", zorder=1))
             axes.add_patch(Circle((x, y), 1.0, facecolor="none",
-                                  edgecolor=color, linewidth=1.4, zorder=2))
+                                  edgecolor=stroke, linewidth=1.4, zorder=2))
 
         for mask, (x, y) in layout["regions"].items():
             axes.text(x, y, str(len(regions.get(mask, []))), ha="center",
@@ -1235,12 +1254,14 @@ def draw_evidence_venn(named_sets, labels=None, show_items=True):
             header_y = box["bottom"] + box["height"] - c["pad"] - header_height / 2
             dot_x = box["x"] + c["pad"] + dot_step / 2
 
-            for index, color in enumerate(VENN_COLORS[: len(names)]):
+            for index in range(len(names)):
                 member = box["mask"] >> index & 1
-                axes.plot(dot_x + index * dot_step, header_y, marker="o",
+                axes.plot(dot_x + index * dot_step, header_y,
+                          marker=VENN_MARKERS[index],
                           markersize=c["header_size"] * 0.62,
-                          markerfacecolor=color if member else "white",
-                          markeredgecolor=color, markeredgewidth=0.9,
+                          markerfacecolor=VENN_COLORS[index] if member else "white",
+                          markeredgecolor=VENN_STROKES[index],
+                          markeredgewidth=0.9,
                           linestyle="none", zorder=4)
 
             axes.text(dot_x + len(names) * dot_step - dot_step * 0.1, header_y,
@@ -1258,9 +1279,21 @@ def draw_evidence_venn(named_sets, labels=None, show_items=True):
             axes.text(x, y, abbreviate_species(name), ha="center",
                       va="top" if below else "bottom", fontstyle="italic",
                       fontsize=10, color=INK, zorder=4)
-            axes.text(x, y - (13 if below else 2) * unit,
-                      f"n = {len(named_sets[name])}", ha="center", va="top",
-                      fontsize=9, color="#555555", zorder=4)
+            # Marker + "n = k" centred as one unit under the name; the shape
+            # matches the one in the callout headers.
+            count_text = f"n = {len(named_sets[name])}"
+            line_y = y - (13 if below else 2) * unit
+            text_width = len(count_text) * 0.55 * 9 * unit
+            marker_width, marker_gap = 7 * unit, 3 * unit
+            left = x - (marker_width + marker_gap + text_width) / 2
+            axes.plot(left + marker_width / 2, line_y - 4.6 * unit,
+                      marker=VENN_MARKERS[index], markersize=6,
+                      markerfacecolor=VENN_COLORS[index],
+                      markeredgecolor=VENN_STROKES[index],
+                      markeredgewidth=0.9, linestyle="none", zorder=4)
+            axes.text(left + marker_width + marker_gap, line_y, count_text,
+                      ha="left", va="top", fontsize=9, color=INK_MUTED,
+                      zorder=4)
 
         axes.set_xlim(x_low, x_high)
         axes.set_ylim(y_low, y_high)
@@ -1275,6 +1308,9 @@ def draw_evidence_venn(named_sets, labels=None, show_items=True):
 def export_figure(figure):
     """SVG (editable text), PDF (TrueType) and 600-dpi PNG of a figure.
 
+    Every format has an opaque white background: the inks are chosen for
+    white, and a transparent export placed on a dark slide would lose them.
+
     Call inside the FIGURE_STYLE context: the font-embedding settings are
     read at save time.
     """
@@ -1284,8 +1320,7 @@ def export_figure(figure):
         buffer = io.BytesIO()
         figure.savefig(buffer, format=fmt, dpi=600 if fmt == "png" else None,
                        bbox_inches="tight", pad_inches=0.08,
-                       transparent=(fmt != "png"),
-                       facecolor="white" if fmt == "png" else "none")
+                       facecolor="white")
         exports[fmt] = buffer.getvalue()
 
     return exports
@@ -1493,7 +1528,7 @@ def draw_evidence_upset(filtered, names):
 
         for x, (mask, _) in enumerate(intersections):
             members = [n_sets - 1 - i for i in range(n_sets) if mask >> i & 1]
-            ax_mat.scatter([x] * n_sets, range(n_sets), s=30, color=MARK_EMPTY,
+            ax_mat.scatter([x] * n_sets, range(n_sets), s=30, color=MARK_ABSENT_DOT,
                            linewidths=0, zorder=1)
             if len(members) > 1:
                 ax_mat.plot([x, x], [min(members), max(members)],
@@ -1711,8 +1746,9 @@ def render_shared_evidence(response_text, table_rows):
 
         st.caption(
             "Circle size is fixed and not proportional to n."
-            + (" In each box, filled dots mark the candidates the region "
-               "belongs to; crowded boxes are truncated and the table below "
+            + (" In each box, filled markers (the shape and colour shown "
+               "beside each name) mark the candidates the region belongs "
+               "to; crowded boxes are truncated and the table below "
                "gives every item." if show_items else "")
         )
 
