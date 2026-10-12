@@ -763,16 +763,47 @@ def render_16s_phylogeny(response_text, extra_organisms=(), email="", api_key=""
 # RULE forbids them) and their number is reported, so a reviewer can see how
 # much of the overlap rests on items the tables do not support.
 #
-# The diagram compares 2 or 3 candidates; beyond 3 a Venn stops being
-# readable, so the full presence/absence matrix across every candidate is
-# given as a table instead.
+# Three views of the same grounded evidence, each with its own job:
+#   heatmap  - WHICH items each candidate shares (every name, any number of
+#              candidates); the main-figure view when the functions matter.
+#   UpSet    - HOW MUCH overlap there is, every exclusive intersection drawn
+#              explicitly (Lex et al., 2014); members go in the CSV.
+#   Venn     - counts for 2-3 chosen candidates, with optional callouts.
 
 VENN_MAX_SETS = 3
 
-# Brown, blue and orange are reserved in this project's figures for the query
-# bacterium, immune cells and proteins; greens and red carry audit meaning.
-# The set colours avoid all of them.
-VENN_COLORS = ("#7b5ea7", "#2a9d8f", "#c8507f")
+# Brown, blue and orange/gold are reserved in this project's figures for the
+# query bacterium, immune cells and proteins; greens and red carry audit
+# meaning. The set colours avoid all of them, and separate by lightness as well
+# as hue so every pair stays distinct under protan/deutan/tritan simulation
+# (validated: worst all-pairs CVD dE 11.5, normal-vision dE 16.9). The rose is
+# too light for text, so species names are set in ink and colour is carried by
+# the marks only.
+VENN_COLORS = ("#5d4a9e", "#1e7470", "#e88ab4")
+
+# Neutral inks shared by every evidence figure.
+INK = "#222222"
+INK_MUTED = "#555555"
+MARK_DARK = "#3d3d3d"
+MARK_EMPTY = "#ececec"
+RULE = "#b8b8b8"
+
+FIGURE_STYLE = {
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+    "font.size": 8,
+    "svg.fonttype": "none",
+    "pdf.fonttype": 42,
+}
+
+# Row groups for the heatmap, in display order.
+SOURCE_GROUPS = (
+    (4, "Metabolic pathways (Table 4)"),
+    (3, "Protein function families (Table 3)"),
+    (2, "KEGG-hit descriptions (Table 2)"),
+    (1, "Functional categories (Table 1)"),
+    (None, "Not in Tables 1-4"),
+)
 
 TABLE_LABELS = {
     1: "Table 1 - Functional categories",
@@ -1009,15 +1040,15 @@ def region_name(mask, names):
     return " ∩ ".join(members) + " only"
 
 
-# Fixed geometry: equal circles, radius 1. Region label positions were checked
-# to sit inside exactly the circles their bitmask names.
+# Fixed geometry: equal circles, radius 1. Region anchors were checked to sit
+# inside exactly the circles their bitmask names.
 _VENN_LAYOUT = {
     2: {
         "centers": [(-0.55, 0.0), (0.55, 0.0)],
         "regions": {0b01: (-1.0, 0.0), 0b10: (1.0, 0.0), 0b11: (0.0, 0.0)},
-        "titles": [(-0.85, 1.32, "center"), (0.85, 1.32, "center")],
+        "titles": [(-0.85, 1.32), (0.85, 1.32)],
         "limits": ((-1.75, 1.75), (-1.2, 1.65)),
-        "size": (5.2, 3.9),
+        "size": (5.2, 4.3),
     },
     3: {
         "centers": [(-0.55, 0.32), (0.55, 0.32), (0.0, -0.63)],
@@ -1026,84 +1057,501 @@ _VENN_LAYOUT = {
             0b011: (0.0, 0.78), 0b101: (-0.62, -0.38), 0b110: (0.62, -0.38),
             0b111: (0.0, 0.05),
         },
-        "titles": [(-0.85, 1.64, "center"), (0.85, 1.64, "center"), (0.0, -1.74, "center")],
+        "titles": [(-0.85, 1.64), (0.85, 1.64), (0.0, -1.74)],
         "limits": ((-1.75, 1.75), (-2.08, 1.98)),
-        "size": (5.2, 5.3),
+        "size": (5.2, 6.0),
     },
 }
 
+# Callout boxes: each non-empty region's number is joined by a leader line to
+# a box outside the circles listing that region's items. Boxes go in a column
+# on the side their region lies on (centre regions fill whichever column is
+# shorter), each as close to level with its number as the boxes above allow,
+# so leaders stay short and do not cross. A box header marks the region with
+# the set colours -- filled dot = in that set, hollow = not -- which matches
+# the circle titles and avoids writing species names in non-italic type.
+_CALLOUT = {
+    "width": 1.95,          # box width, data units (circle radius = 1)
+    "gap_x": 0.25,          # diagram edge to box column
+    "gap_y": 0.14,          # between stacked boxes
+    "pad": 0.08,            # inside the box
+    "fig_width": 9.5,       # inches, whole figure with callouts
+    "header_size": 8,
+    "item_size": 7,
+    "line_spacing": 1.3,
+    "max_lines": 12,        # per box, including any "+N more"
+}
 
-def draw_evidence_venn(named_sets):
-    """Draw a 2- or 3-set Venn of region counts.
+_VENN_COUNT_SIZE = 11
 
-    Returns (figure, {"svg": bytes, "pdf": bytes, "png": bytes}). Exports are
-    written inside the same style context so text stays editable in the SVG
-    and embedded as TrueType in the PDF.
+
+def _callout_lines(members, labels, max_chars, max_lines):
+    """Bulleted item lines for one box, pathways (Table 4) first.
+
+    A name longer than the box wraps onto one continuation line and is cut
+    with an ellipsis after that; items that do not fit end in "+N more".
+    """
+    import textwrap
+
+    ordered = sorted(members, key=lambda m: (-(labels[m][1] or 0), labels[m][0].lower()))
+    lines = []
+    shown = 0
+
+    for index, member in enumerate(ordered):
+        wrapped = textwrap.wrap(
+            " ".join(labels[member][0].split()), width=max_chars - 2,
+            max_lines=2, placeholder=" …",
+        ) or [labels[member][0]]
+        block = ["• " + wrapped[0]] + ["   " + w for w in wrapped[1:]]
+        reserve = 1 if index < len(ordered) - 1 else 0
+
+        if len(lines) + len(block) + reserve > max_lines:
+            break
+
+        lines.extend(block)
+        shown += 1
+
+    if shown < len(ordered):
+        lines.append(f"+{len(ordered) - shown} more (see table)")
+
+    return lines
+
+
+def draw_evidence_venn(named_sets, labels=None, show_items=True):
+    """Draw a 2- or 3-set Venn of region counts, optionally with callout
+    boxes listing each region's items.
+
+    labels maps each element key to (verbatim label, table) and is needed
+    only for the callouts. Returns (figure, {"svg", "pdf", "png": bytes}).
+    Exports are written inside the same style context so text stays editable
+    in the SVG and embedded as TrueType in the PDF.
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle
+    from matplotlib.patches import Circle, FancyBboxPatch
 
     names = list(named_sets)
     layout = _VENN_LAYOUT[len(names)]
     regions = venn_regions(named_sets)
+    show_items = bool(show_items and labels and regions)
 
-    style = {
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
-        "font.size": 10,
-        "svg.fonttype": "none",
-        "pdf.fonttype": 42,
-    }
+    (dx_low, dx_high), (dy_low, dy_high) = layout["limits"]
+    c = _CALLOUT
+
+    if show_items:
+        x_low = dx_low - c["gap_x"] - c["width"] - 0.05
+        x_high = dx_high + c["gap_x"] + c["width"] + 0.05
+        points_per_unit = 72 * c["fig_width"] / (x_high - x_low)
+    else:
+        x_low, x_high = dx_low, dx_high
+        points_per_unit = 72 * min(layout["size"][0] / (x_high - x_low),
+                                   layout["size"][1] / (dy_high - dy_low))
+
+    unit = 1.0 / points_per_unit          # data units per point
+    header_height = c["header_size"] * 1.6 * unit
+    line_height = c["item_size"] * c["line_spacing"] * unit
+    dot_step = c["header_size"] * 1.25 * unit
+
+    # ---- callout geometry, computed before drawing so the axes can grow
+    boxes = []
+
+    if show_items:
+        max_chars = int((c["width"] - 2 * c["pad"]) * points_per_unit
+                        / (0.53 * c["item_size"]))
+        filled = [m for m in layout["regions"] if regions.get(m)]
+
+        left = [m for m in filled if layout["regions"][m][0] < 0]
+        right = [m for m in filled if layout["regions"][m][0] > 0]
+        centre = sorted((m for m in filled if layout["regions"][m][0] == 0),
+                        key=lambda m: -layout["regions"][m][1])
+
+        for mask in centre:
+            (left if len(left) < len(right) else right).append(mask)
+
+        for side, column in (("left", left), ("right", right)):
+            # Top to bottom; at equal height the outer region goes first, so
+            # it keeps the level slot and the inner region's leader slants
+            # past the outer number instead of running through it.
+            column.sort(key=lambda m: (-layout["regions"][m][1],
+                                       -abs(layout["regions"][m][0])))
+            box_x = (dx_low - c["gap_x"] - c["width"]) if side == "left" \
+                else (dx_high + c["gap_x"])
+            previous_bottom = float("inf")
+
+            for mask in column:
+                lines = _callout_lines(regions[mask], labels, max_chars,
+                                       c["max_lines"])
+                height = header_height + len(lines) * line_height + 2 * c["pad"]
+                anchor_y = layout["regions"][mask][1]
+                centre_y = min(anchor_y, previous_bottom - c["gap_y"] - height / 2)
+                previous_bottom = centre_y - height / 2
+                boxes.append({
+                    "mask": mask, "side": side, "x": box_x, "lines": lines,
+                    "bottom": centre_y - height / 2, "height": height,
+                    "centre_y": centre_y,
+                })
+
+    y_low = min([dy_low] + [b["bottom"] - 0.05 for b in boxes])
+    y_high = max([dy_high] + [b["bottom"] + b["height"] + 0.05 for b in boxes])
+    width_in = (x_high - x_low) * points_per_unit / 72
+    height_in = (y_high - y_low) * points_per_unit / 72
+
+    style = FIGURE_STYLE
 
     with plt.rc_context(style):
-        figure, axes = plt.subplots(figsize=layout["size"])
+        figure = plt.figure(figsize=(width_in, height_in))
+        axes = figure.add_axes([0, 0, 1, 1])
 
         for (x, y), color in zip(layout["centers"], VENN_COLORS):
             axes.add_patch(Circle((x, y), 1.0, facecolor=color, alpha=0.22,
-                                  edgecolor="none"))
+                                  edgecolor="none", zorder=1))
             axes.add_patch(Circle((x, y), 1.0, facecolor="none",
-                                  edgecolor=color, linewidth=1.4))
+                                  edgecolor=color, linewidth=1.4, zorder=2))
 
         for mask, (x, y) in layout["regions"].items():
-            axes.text(x, y, str(len(regions.get(mask, []))),
-                      ha="center", va="center", fontsize=11, color="#222222")
+            axes.text(x, y, str(len(regions.get(mask, []))), ha="center",
+                      va="center", fontsize=_VENN_COUNT_SIZE, color="#222222",
+                      zorder=4)
 
-        for index, (name, (x, y, align)) in enumerate(zip(names, layout["titles"])):
-            color = VENN_COLORS[index]
+        for box in boxes:
+            anchor_x, anchor_y = layout["regions"][box["mask"]]
+            edge_x = box["x"] + c["width"] if box["side"] == "left" else box["x"]
+            dx, dy = edge_x - anchor_x, box["centre_y"] - anchor_y
+            length = max((dx ** 2 + dy ** 2) ** 0.5, 1e-9)
+            start_offset = _VENN_COUNT_SIZE * 0.85 * unit
+
+            axes.plot(
+                [anchor_x + dx / length * start_offset, edge_x],
+                [anchor_y + dy / length * start_offset, box["centre_y"]],
+                color="#8a8a8a", linewidth=0.6, solid_capstyle="round", zorder=3,
+            )
+            axes.add_patch(FancyBboxPatch(
+                (box["x"], box["bottom"]), c["width"], box["height"],
+                boxstyle=f"round,pad=0,rounding_size={4 * unit}",
+                facecolor="white", edgecolor="#b8b8b8", linewidth=0.6, zorder=3,
+            ))
+
+            header_y = box["bottom"] + box["height"] - c["pad"] - header_height / 2
+            dot_x = box["x"] + c["pad"] + dot_step / 2
+
+            for index, color in enumerate(VENN_COLORS[: len(names)]):
+                member = box["mask"] >> index & 1
+                axes.plot(dot_x + index * dot_step, header_y, marker="o",
+                          markersize=c["header_size"] * 0.62,
+                          markerfacecolor=color if member else "white",
+                          markeredgecolor=color, markeredgewidth=0.9,
+                          linestyle="none", zorder=4)
+
+            axes.text(dot_x + len(names) * dot_step - dot_step * 0.1, header_y,
+                      f"n = {len(regions[box['mask']])}", ha="left", va="center",
+                      fontsize=c["header_size"], fontweight="bold",
+                      color="#222222", zorder=4)
+            axes.text(box["x"] + c["pad"],
+                      box["bottom"] + box["height"] - c["pad"] - header_height,
+                      "\n".join(box["lines"]), ha="left", va="top",
+                      fontsize=c["item_size"], linespacing=c["line_spacing"],
+                      color="#333333", zorder=4)
+
+        for index, (name, (x, y)) in enumerate(zip(names, layout["titles"])):
             below = y < 0
-            axes.text(x, y, abbreviate_species(name), ha=align,
-                      va="top" if below else "bottom",
-                      fontstyle="italic", fontsize=10, color=color)
-            axes.text(x, y - 0.13 if below else y - 0.02,
-                      f"n = {len(named_sets[name])}", ha=align,
-                      va="top" if below else "top",
-                      fontsize=9, color="#555555")
+            axes.text(x, y, abbreviate_species(name), ha="center",
+                      va="top" if below else "bottom", fontstyle="italic",
+                      fontsize=10, color=INK, zorder=4)
+            axes.text(x, y - (13 if below else 2) * unit,
+                      f"n = {len(named_sets[name])}", ha="center", va="top",
+                      fontsize=9, color="#555555", zorder=4)
 
-        axes.set_xlim(*layout["limits"][0])
-        axes.set_ylim(*layout["limits"][1])
+        axes.set_xlim(x_low, x_high)
+        axes.set_ylim(y_low, y_high)
         axes.set_aspect("equal")
         axes.axis("off")
-        figure.tight_layout(pad=0.4)
 
-        exports = {}
-
-        for fmt in ("svg", "pdf", "png"):
-            buffer = io.BytesIO()
-            figure.savefig(buffer, format=fmt, dpi=600 if fmt == "png" else None,
-                           bbox_inches="tight", transparent=(fmt != "png"),
-                           facecolor="white" if fmt == "png" else "none")
-            exports[fmt] = buffer.getvalue()
+        exports = export_figure(figure)
 
     return figure, exports
+
+
+def export_figure(figure):
+    """SVG (editable text), PDF (TrueType) and 600-dpi PNG of a figure.
+
+    Call inside the FIGURE_STYLE context: the font-embedding settings are
+    read at save time.
+    """
+    exports = {}
+
+    for fmt in ("svg", "pdf", "png"):
+        buffer = io.BytesIO()
+        figure.savefig(buffer, format=fmt, dpi=600 if fmt == "png" else None,
+                       bbox_inches="tight", pad_inches=0.08,
+                       transparent=(fmt != "png"),
+                       facecolor="white" if fmt == "png" else "none")
+        exports[fmt] = buffer.getvalue()
+
+    return exports
+
+
+def evidence_matrix(filtered, names):
+    """Presence/absence of every cited item across candidates.
+
+    One row per item, ordered for display: by source group (pathways first),
+    then by how many candidates cite it, then by presence pattern in
+    candidate order -- so items shared by the same candidates sit together --
+    then alphabetically.
+    """
+    labels = {}
+    for items in filtered.values():
+        for key, value in items.items():
+            labels.setdefault(key, value)
+
+    group_rank = {table: i for i, (table, _) in enumerate(SOURCE_GROUPS)}
+    rows = []
+
+    for key, (label, table_number) in labels.items():
+        present = [key in filtered[name] for name in names]
+        rows.append({
+            "key": key,
+            "Item": label,
+            "Table": table_number,
+            "Source": _table_tag(table_number),
+            **dict(zip(names, present)),
+            "Cited by": sum(present),
+            "_group": group_rank.get(table_number, len(SOURCE_GROUPS)),
+            "_pattern": tuple(not p for p in present),
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    frame = pd.DataFrame(rows)
+    frame["_label"] = frame["Item"].str.lower()
+    frame = frame.sort_values(["_group", "Cited by", "_pattern", "_label"],
+                              ascending=[True, False, True, True])
+    return frame.drop(columns=["_pattern", "_label"]).reset_index(drop=True)
+
+
+def _fit_text(text, max_chars):
+    text = " ".join(str(text).split())
+    return text if len(text) <= max_chars else text[: max_chars - 1].rstrip() + "…"
+
+
+def draw_evidence_heatmap(matrix, names):
+    """Binary presence/absence heatmap, rows grouped by source table.
+
+    Drawn in cell units (1 cell = 1 data unit) on an axes that fills the
+    figure, with the figure sized from the row/column counts, so cells stay
+    square and text sizes stay fixed however many rows there are.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    cell_in = 0.19
+    ppu = cell_in * 72                          # points per cell
+    label_chars = 72
+    row_font, head_font, group_font = 7, 7.5, 7
+    gap = 2 / ppu                               # 2 pt surface gap between cells
+
+    # Layout rows: a header slot before each group, then its items.
+    slots = []
+    for table_number, group_label in SOURCE_GROUPS:
+        group = matrix[matrix["Table"].isna()] if table_number is None \
+            else matrix[matrix["Table"] == table_number]
+        if group.empty:
+            continue
+        slots.append(("header", f"{group_label}  ·  {len(group)}"))
+        slots.extend(("item", row) for _, row in group.iterrows())
+
+    n_cols = len(names)
+    longest = max(len(_fit_text(r["Item"], label_chars)) for _, r in matrix.iterrows())
+    label_units = longest * 0.52 * row_font / ppu + 0.6
+    column_head_units = max(len(abbreviate_species(n)) for n in names) * 0.52 * head_font / ppu * 0.87 + 1.0
+    count_units = 2.2
+
+    x_low, x_high = -label_units, n_cols + count_units
+    y_top, y_bottom = -column_head_units, len(slots) + 0.4
+
+    with plt.rc_context(FIGURE_STYLE):
+        figure = plt.figure(figsize=((x_high - x_low) * cell_in,
+                                     (y_bottom - y_top) * cell_in))
+        axes = figure.add_axes([0, 0, 1, 1])
+
+        for col, name in enumerate(names):
+            axes.text(col + 0.5, -0.35, abbreviate_species(name), rotation=60,
+                      rotation_mode="anchor", ha="left", va="bottom",
+                      fontstyle="italic", fontsize=head_font, color=INK)
+
+        axes.text(n_cols + 0.6, -0.35, "Shared by", rotation=60,
+                  rotation_mode="anchor", ha="left", va="bottom",
+                  fontsize=row_font, color=INK_MUTED)
+
+        for y, (kind, payload) in enumerate(slots):
+            if kind == "header":
+                axes.text(x_low + 0.15, y + 0.62, payload, ha="left",
+                          va="center", fontsize=group_font, fontweight="bold",
+                          color=INK)
+                axes.plot([x_low + 0.15, n_cols + count_units - 0.2],
+                          [y + 0.98, y + 0.98], color=RULE, linewidth=0.5)
+                continue
+
+            axes.text(-0.3, y + 0.5, _fit_text(payload["Item"], label_chars),
+                      ha="right", va="center", fontsize=row_font, color=INK)
+
+            for col, name in enumerate(names):
+                axes.add_patch(Rectangle(
+                    (col + gap / 2, y + gap / 2), 1 - gap, 1 - gap,
+                    facecolor=MARK_DARK if payload[name] else MARK_EMPTY,
+                    edgecolor="none",
+                ))
+
+            axes.text(n_cols + 0.45, y + 0.5,
+                      f"{payload['Cited by']}/{n_cols}", ha="left",
+                      va="center", fontsize=row_font, color=INK_MUTED)
+
+        axes.set_xlim(x_low, x_high)
+        axes.set_ylim(y_bottom, y_top)
+        axes.axis("off")
+
+        exports = export_figure(figure)
+
+    return figure, exports
+
+
+def draw_evidence_upset(filtered, names):
+    """UpSet plot of exclusive intersections across all candidates.
+
+    Top: one bar per non-empty intersection, largest first. Below: the dot
+    matrix -- filled, joined dots are the candidates that make up the
+    intersection. Left: total items cited per candidate.
+    Returns (figure, exports, intersections) where intersections is a list of
+    (mask, member keys) in plotted order.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    named_sets = {name: set(filtered[name]) for name in names}
+    regions = venn_regions(named_sets)
+    intersections = sorted(
+        regions.items(),
+        key=lambda kv: (-len(kv[1]), -bin(kv[0]).count("1"), kv[0]),
+    )
+
+    n_int, n_sets = len(intersections), len(names)
+    col_in, row_in = 0.30, 0.26
+    bar_in, set_bar_in, name_in = 1.6, 0.95, 1.15
+    margin = 0.15
+
+    matrix_w = n_int * col_in
+    matrix_h = n_sets * row_in
+    width = margin + set_bar_in + name_in + matrix_w + margin
+    height = margin + matrix_h + 0.12 + bar_in + margin
+
+    def box(left, bottom, w, h):
+        return [left / width, bottom / height, w / width, h / height]
+
+    matrix_left = margin + set_bar_in + name_in
+    max_bar = max(len(m) for _, m in intersections)
+    max_set = max(len(s) for s in named_sets.values()) or 1
+
+    with plt.rc_context(FIGURE_STYLE):
+        figure = plt.figure(figsize=(width, height))
+        ax_bar = figure.add_axes(box(matrix_left, margin + matrix_h + 0.12,
+                                     matrix_w, bar_in))
+        ax_mat = figure.add_axes(box(matrix_left, margin, matrix_w, matrix_h))
+        ax_set = figure.add_axes(box(margin, margin, set_bar_in, matrix_h))
+
+        xs = list(range(n_int))
+
+        # Intersection sizes.
+        sizes = [len(m) for _, m in intersections]
+        ax_bar.bar(xs, sizes, width=0.6, color=MARK_DARK, linewidth=0)
+        for x, size in zip(xs, sizes):
+            ax_bar.text(x, size + max_bar * 0.02, str(size), ha="center",
+                        va="bottom", fontsize=7, color=INK)
+        ax_bar.set_xlim(-0.5, n_int - 0.5)
+        ax_bar.set_ylim(0, max_bar * 1.15)
+        ax_bar.set_xticks([])
+        # Every bar is labelled with its value, so a tick axis would only
+        # repeat it; the axis title stays to say what the bars count.
+        ax_bar.set_yticks([])
+        ax_bar.set_ylabel("Items in intersection", fontsize=8, color=INK)
+        for side in ("top", "right", "left"):
+            ax_bar.spines[side].set_visible(False)
+        ax_bar.spines["bottom"].set_linewidth(0.5)
+        ax_bar.spines["bottom"].set_color(RULE)
+
+        # Dot matrix; candidate order top to bottom.
+        for row in range(n_sets):
+            y = n_sets - 1 - row
+            if row % 2 == 0:
+                ax_mat.axhspan(y - 0.5, y + 0.5, color="#f5f5f5", linewidth=0,
+                               zorder=0)
+            ax_mat.text(-0.65, y, abbreviate_species(names[row]), ha="right",
+                        va="center", fontsize=8, fontstyle="italic", color=INK)
+
+        for x, (mask, _) in enumerate(intersections):
+            members = [n_sets - 1 - i for i in range(n_sets) if mask >> i & 1]
+            ax_mat.scatter([x] * n_sets, range(n_sets), s=30, color=MARK_EMPTY,
+                           linewidths=0, zorder=1)
+            if len(members) > 1:
+                ax_mat.plot([x, x], [min(members), max(members)],
+                            color=MARK_DARK, linewidth=1.6, zorder=2)
+            ax_mat.scatter([x] * len(members), members, s=30, color=MARK_DARK,
+                           linewidths=0, zorder=3)
+
+        ax_mat.set_xlim(-0.5, n_int - 0.5)
+        ax_mat.set_ylim(-0.5, n_sets - 0.5)
+        ax_mat.axis("off")
+
+        # Set sizes, growing leftwards towards the names.
+        set_sizes = [len(named_sets[n]) for n in names]
+        ys = [n_sets - 1 - i for i in range(n_sets)]
+        ax_set.barh(ys, set_sizes, height=0.55, color=MARK_DARK, linewidth=0)
+        for y, size in zip(ys, set_sizes):
+            ax_set.text(size + max_set * 0.04, y, str(size), ha="right",
+                        va="center", fontsize=7, color=INK)
+        ax_set.set_xlim(max_set * 1.3, 0)
+        ax_set.set_ylim(-0.5, n_sets - 0.5)
+        ax_set.set_yticks([])
+        ax_set.set_xticks([])
+        ax_set.set_xlabel("Items cited", fontsize=8, color=INK)
+        for side in ("top", "left", "bottom"):
+            ax_set.spines[side].set_visible(False)
+        ax_set.spines["right"].set_linewidth(0.5)
+        ax_set.spines["right"].set_color(RULE)
+
+        exports = export_figure(figure)
+
+    return figure, exports, intersections
+
+
+def _figure_downloads(exports, stem, csv_label, csv_frame, csv_name):
+    """Row of SVG / PDF / PNG / CSV download buttons."""
+    columns = st.columns(4)
+    items = (
+        ("SVG", exports["svg"], f"{stem}.svg", "image/svg+xml"),
+        ("PDF", exports["pdf"], f"{stem}.pdf", "application/pdf"),
+        ("PNG, 600 dpi", exports["png"], f"{stem}.png", "image/png"),
+        (csv_label, csv_frame.to_csv(index=False), csv_name, "text/csv"),
+    )
+
+    for column, (label, data, file_name, mime) in zip(columns, items):
+        with column:
+            st.download_button(label, data=data, file_name=file_name, mime=mime,
+                               use_container_width=True,
+                               key=f"web6_dl_{file_name}")
 
 
 def _table_tag(table_number):
     return f"Table {table_number}" if table_number else "not in Tables 1-4"
 
 
-def render_evidence_venn(response_text, table_rows):
+def render_shared_evidence(response_text, table_rows):
+    """Heatmap, UpSet and Venn views of the evidence the candidates share."""
+    import matplotlib.pyplot as plt
+
     evidence = collect_candidate_evidence(response_text, table_rows)
 
     if len(evidence) < 2:
@@ -1143,133 +1591,155 @@ def render_evidence_venn(response_text, table_rows):
                  "'not in Tables 1-4'.",
         )
 
-    chosen = st.multiselect(
-        f"Candidates in the diagram (2-{VENN_MAX_SETS})",
-        options=names,
-        default=names[:VENN_MAX_SETS],
-        max_selections=VENN_MAX_SETS,
-        key="web6_venn_candidates",
-    )
-
     filtered = filter_evidence(evidence, set(tables), grounded_only)
-
     ungrounded = {
         name: sum(1 for value in items.values() if value[1] is None)
         for name, items in evidence.items()
     }
-    total_ungrounded = sum(ungrounded[n] for n in chosen) if chosen else 0
 
-    if len(chosen) < 2:
-        st.info("Select at least two candidates.")
-    else:
+    st.caption(
+        "Every item is a Table 1-4 row of the query genome that a candidate's "
+        "evidence cell cites as shared, so all items are present in the query "
+        "genome by construction and it is not drawn as a column."
+        + (
+            " Cited items matching no table row: "
+            + ", ".join(f"{abbreviate_species(n)} {c}" for n, c in ungrounded.items() if c)
+            + (" (excluded)." if grounded_only else " (included).")
+            if any(ungrounded.values()) else ""
+        )
+    )
+
+    matrix = evidence_matrix(filtered, names)
+
+    if matrix.empty:
+        st.info("No cited items remain under the current filters.")
+        return
+
+    heatmap_tab, upset_tab, venn_tab = st.tabs(["Heatmap", "UpSet", "Venn"])
+
+    # ---- Heatmap: which items, across every candidate
+    with heatmap_tab:
+        figure, exports = draw_evidence_heatmap(matrix, names)
+        st.pyplot(figure, use_container_width=False)
+        plt.close(figure)
+
+        st.caption(
+            "Filled cell = the candidate's evidence cell cites that row. Rows "
+            "are grouped by source table, then ordered by how many candidates "
+            "share them; candidates are in the model's confidence order. "
+            "Labels longer than 72 characters are shortened; the CSV has them "
+            "in full."
+        )
+
+        csv = matrix[["Item", "Source"] + names + ["Cited by"]].copy()
+        csv[names] = csv[names].astype(int)
+        _figure_downloads(exports, "candidate_evidence_heatmap",
+                          "Matrix (CSV)", csv, "candidate_evidence_matrix.csv")
+
+    # ---- UpSet: how much overlap, every intersection explicit
+    with upset_tab:
+        figure, exports, intersections = draw_evidence_upset(filtered, names)
+        st.pyplot(figure, use_container_width=False)
+        plt.close(figure)
+
+        st.caption(
+            "Each bar is an exclusive intersection: items cited by exactly the "
+            "candidates marked by filled dots below it, and by no other. Bars "
+            "on the left are the total items each candidate cites."
+        )
+
+        labels = dict(zip(matrix["key"], zip(matrix["Item"], matrix["Table"])))
+        long_rows = []
+        summary_rows = []
+
+        for mask, members in intersections:
+            title = region_name(mask, names)
+            summary_rows.append({
+                "Intersection": title,
+                "Candidates": bin(mask).count("1"),
+                "Items": len(members),
+                "Members": "; ".join(labels[m][0] for m in members),
+            })
+            long_rows.extend(
+                {"Intersection": title, "Item": labels[m][0],
+                 "Source": _table_tag(labels[m][1] if pd.notna(labels[m][1]) else None)}
+                for m in members
+            )
+
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True,
+                     hide_index=True)
+        _figure_downloads(exports, "candidate_evidence_upset",
+                          "Members (CSV)", pd.DataFrame(long_rows),
+                          "candidate_evidence_upset_members.csv")
+
+    # ---- Venn: counts for 2-3 chosen candidates
+    with venn_tab:
+        chosen = st.multiselect(
+            f"Candidates in the diagram (2-{VENN_MAX_SETS})",
+            options=names,
+            default=names[:VENN_MAX_SETS],
+            max_selections=VENN_MAX_SETS,
+            key="web6_venn_candidates",
+        )
+        show_items = st.checkbox(
+            "List each region's items in boxes beside the diagram",
+            value=True,
+            key="web6_venn_show_items",
+            help="Each number is joined to a box listing its items. A box shows "
+                 "up to 12 lines and ends in '+N more' beyond that; the region "
+                 "table below always has the full list.",
+        )
+
+        if len(chosen) < 2:
+            st.info("Select at least two candidates.")
+            return
+
         named_sets = {name: set(filtered[name]) for name in chosen}
 
         if not any(named_sets.values()):
             st.info("No cited items remain for these candidates under the current filters.")
-        else:
-            figure, exports = draw_evidence_venn(named_sets)
-            st.pyplot(figure, use_container_width=False)
+            return
 
-            import matplotlib.pyplot as plt
-            plt.close(figure)
+        labels = {}
+        for name in chosen:
+            for key, value in filtered[name].items():
+                labels.setdefault(key, value)
 
-            caption = (
-                "Counts are distinct Table 1-4 rows each candidate's evidence "
-                "cell cites as shared with the query genome. Circle size is "
-                "fixed and not proportional to n."
+        figure, exports = draw_evidence_venn(named_sets, labels, show_items)
+        st.pyplot(figure, use_container_width=True)
+        plt.close(figure)
+
+        st.caption(
+            "Circle size is fixed and not proportional to n."
+            + (" In each box, filled dots mark the candidates the region "
+               "belongs to; crowded boxes are truncated and the table below "
+               "gives every item." if show_items else "")
+        )
+
+        region_rows = []
+        long_rows = []
+
+        for mask, members in sorted(
+            venn_regions(named_sets).items(),
+            key=lambda kv: (-bin(kv[0]).count("1"), kv[0]),
+        ):
+            title = region_name(mask, chosen)
+            region_rows.append({
+                "Region": title,
+                "Items": len(members),
+                "Members": "; ".join(labels[m][0] for m in members),
+            })
+            long_rows.extend(
+                {"Region": title, "Item": labels[m][0],
+                 "Source": _table_tag(labels[m][1])}
+                for m in members
             )
 
-            if total_ungrounded:
-                caption += (
-                    f" {total_ungrounded} cited item(s) across the selected "
-                    "candidates match no table row"
-                    + (" and are excluded." if grounded_only else " and are included.")
-                )
-
-            st.caption(caption)
-
-            labels = {}
-            for name in chosen:
-                for key, value in filtered[name].items():
-                    labels.setdefault(key, value)
-
-            region_rows = []
-            long_rows = []
-
-            for mask, members in sorted(
-                venn_regions(named_sets).items(),
-                key=lambda kv: (-bin(kv[0]).count("1"), kv[0]),
-            ):
-                title = region_name(mask, chosen)
-                region_rows.append({
-                    "Region": title,
-                    "Items": len(members),
-                    "Members": "; ".join(labels[m][0] for m in members),
-                })
-                long_rows.extend(
-                    {"Region": title, "Item": labels[m][0],
-                     "Source": _table_tag(labels[m][1])}
-                    for m in members
-                )
-
-            st.dataframe(pd.DataFrame(region_rows), use_container_width=True,
-                         hide_index=True)
-
-            download_columns = st.columns(4)
-            downloads = (
-                ("Venn (SVG)", exports["svg"], "candidate_evidence_venn.svg", "image/svg+xml"),
-                ("Venn (PDF)", exports["pdf"], "candidate_evidence_venn.pdf", "application/pdf"),
-                ("Venn (PNG, 600 dpi)", exports["png"], "candidate_evidence_venn.png", "image/png"),
-                ("Regions (CSV)", pd.DataFrame(long_rows).to_csv(index=False),
-                 "candidate_evidence_venn_regions.csv", "text/csv"),
-            )
-
-            for column, (label, data, file_name, mime) in zip(download_columns, downloads):
-                with column:
-                    st.download_button(label, data=data, file_name=file_name,
-                                       mime=mime, use_container_width=True,
-                                       key=f"web6_venn_dl_{file_name}")
-
-    with st.expander(f"Presence/absence across all {len(names)} candidates", expanded=False):
-        all_labels = {}
-        for items in filtered.values():
-            for key, value in items.items():
-                all_labels.setdefault(key, value)
-
-        if not all_labels:
-            st.write("No cited items under the current filters.")
-        else:
-            matrix_rows = []
-
-            for key, (label, table_number) in all_labels.items():
-                row = {"Item": label, "Source": _table_tag(table_number)}
-                cited_by = 0
-
-                for name in names:
-                    present = key in filtered[name]
-                    row[abbreviate_species(name)] = "●" if present else ""
-                    cited_by += present
-
-                row["Cited by"] = cited_by
-                matrix_rows.append(row)
-
-            matrix = pd.DataFrame(matrix_rows).sort_values(
-                ["Cited by", "Source", "Item"], ascending=[False, True, True]
-            )
-            st.dataframe(matrix, use_container_width=True, hide_index=True)
-            st.download_button(
-                "Download matrix (CSV)",
-                data=matrix.replace("●", 1).replace("", 0).to_csv(index=False),
-                file_name="candidate_evidence_matrix.csv",
-                mime="text/csv",
-                key="web6_venn_matrix_dl",
-            )
-
-        if any(ungrounded.values()):
-            st.caption(
-                "Cited items matching no table row: "
-                + ", ".join(f"{abbreviate_species(n)} {c}" for n, c in ungrounded.items() if c)
-            )
+        st.dataframe(pd.DataFrame(region_rows), use_container_width=True,
+                     hide_index=True)
+        _figure_downloads(exports, "candidate_evidence_venn",
+                          "Regions (CSV)", pd.DataFrame(long_rows),
+                          "candidate_evidence_venn_regions.csv")
 
 
 def _to_markdown_table(df: pd.DataFrame) -> str:
@@ -1524,13 +1994,13 @@ if st.session_state.get("web6_response"):
         mime="text/plain",
     )
 
-    # Venn of the evidence each candidate shares with the query genome. Sits
-    # between the result and the tree: it is read off the candidate table
-    # directly, needs no network call, and is shown as soon as there is a
-    # result.
+    # Heatmap / UpSet / Venn of the evidence each candidate shares with the
+    # query genome. Sits between the result and the tree: it is read off the
+    # candidate table directly, needs no network call, and is shown as soon as
+    # there is a result.
     st.divider()
     st.subheader("Shared evidence among candidate bacteria")
-    render_evidence_venn(stored_response, st.session_state.get("web6_table_rows", {}))
+    render_shared_evidence(stored_response, st.session_state.get("web6_table_rows", {}))
 
     # The tree and everything that configures it live here, after the result,
     # because none of it is meaningful until there are candidate species to
